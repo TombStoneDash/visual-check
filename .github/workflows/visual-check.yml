@@ -1,0 +1,229 @@
+# Visual Check — PR preview gate
+#
+# Triggers:
+#   - pull_request on main (waits for a Vercel preview deployment, then
+#     runs visual-check against it)
+#   - workflow_dispatch for manual runs against any URL
+#
+# This is a self-hosted workflow (the Visual Check CLI lives in this repo).
+# For *consumer* repos that depend on the future noui.bot API, the flow
+# will be a single curl to POST /api/visual/v1/check-runs — see
+# `VISUAL_CHECK_PROJECT_DOCUMENT.md` §3 and the V2 spec §6.2.
+
+name: visual-check
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      urls:
+        description: "Comma-separated URLs to check"
+        required: true
+        type: string
+      threshold:
+        description: "Pixel diff % threshold"
+        required: false
+        default: "5"
+        type: string
+
+concurrency:
+  group: visual-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # -------------------------------------------------------------------------
+  # Wait for the Vercel preview deployment that a PR creates.
+  # We use the first-party action because it handles the PR → deployment
+  # lookup and surfaces the URL as a workflow output.
+  # -------------------------------------------------------------------------
+  wait-for-preview:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      preview_url: ${{ steps.wait.outputs.url }}
+    steps:
+      - name: Wait for Vercel preview deploy
+        id: wait
+        uses: patrickedqvist/wait-for-vercel-preview@v1.3.2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          max_timeout: 540
+          check_interval: 10
+
+  # -------------------------------------------------------------------------
+  # Run Visual Check against the preview (or the dispatched URLs).
+  # -------------------------------------------------------------------------
+  visual-check:
+    needs: [wait-for-preview]
+    # Run on PR (after wait) OR on manual dispatch (where no wait is needed)
+    if: |
+      always() &&
+      (needs.wait-for-preview.result == 'success' ||
+       github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: visual-check
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: visual-check/package-lock.json
+
+      - name: Install deps
+        run: npm ci
+
+      # Playwright has an official cache pattern that avoids re-downloading
+      # Chromium on every run.
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('visual-check/package-lock.json') }}
+
+      - name: Install Playwright Chromium (with system deps)
+        run: npx playwright install --with-deps chromium
+
+      - name: Determine target URLs
+        id: urls
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "urls=${{ github.event.inputs.urls }}" >> "$GITHUB_OUTPUT"
+            echo "threshold=${{ github.event.inputs.threshold }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "urls=${{ needs.wait-for-preview.outputs.preview_url }}" >> "$GITHUB_OUTPUT"
+            echo "threshold=5" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Baselines live in Supabase as of Phase 2. If a new route lacks an
+      # approved baseline, deploy-gate reports `needs_baseline` and the
+      # job fails intentionally. Promote via `visual-check promote
+      # --run-id <id>` once the PR is approved.
+      - name: Run Visual Check (deploy-gate)
+        id: check
+        env:
+          URLS: ${{ steps.urls.outputs.urls }}
+          THRESHOLD: ${{ steps.urls.outputs.threshold }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          PROJECT_ID: ${{ vars.VISUAL_CHECK_PROJECT_ID || 'visual-check' }}
+          DEPLOYMENT_URL: ${{ steps.urls.outputs.urls }}
+          BRANCH: ${{ github.head_ref || github.ref_name }}
+          SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          mkdir -p reports
+          set +e
+          npx visual-check deploy-gate \
+            --urls "$URLS" \
+            --project "$PROJECT_ID" \
+            --deployment-url "$DEPLOYMENT_URL" \
+            --branch "$BRANCH" \
+            --sha "$SHA" \
+            --threshold "$THRESHOLD" \
+            --concurrency 3 \
+            --json "reports/pr-${{ github.event.pull_request.number || github.run_id }}.json"
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+
+      # Always upload the captures + diffs + reports so a human can triage
+      # a failure even if the job exits non-zero.
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-check-${{ github.event.pull_request.number || github.run_id }}
+          path: |
+            visual-check/reports/
+            visual-check/captures/
+            visual-check/diffs/
+          retention-days: 14
+
+      # Post a PR comment summarizing the run. Uses the JSON report the CLI
+      # just wrote so the summary is always in sync with the artifact.
+      - name: Comment PR
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/github-script@v7
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          RUN_ID: ${{ github.run_id }}
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            const reportPath = path.join(
+              'visual-check',
+              'reports',
+              `pr-${process.env.PR_NUMBER}.json`,
+            );
+            if (!fs.existsSync(reportPath)) {
+              core.warning(`No report at ${reportPath}`);
+              return;
+            }
+            const report = JSON.parse(fs.readFileSync(reportPath, 'utf8'));
+            const s = report.summary;
+            const verdictEmoji = report.pass ? '✅' : '❌';
+            const lines = [
+              `## ${verdictEmoji} Visual Check — ${report.pass ? 'PASS' : 'FAIL'}`,
+              '',
+              `**Run:** \`${report.run_id}\` · **Threshold:** ${report.config.pixel_diff_threshold}%`,
+              '',
+              `| total | passed | warnings | failed | errors | needs baseline |`,
+              `|------:|-------:|---------:|-------:|-------:|---------------:|`,
+              `| ${s.total} | ${s.passed} | ${s.warnings} | ${s.failed} | ${s.errors} | ${s.needs_baseline} |`,
+              '',
+            ];
+            const notOk = report.results.filter(
+              (r) => r.verdict !== 'pass' && r.verdict !== 'warn'
+            );
+            if (notOk.length) {
+              lines.push('### Targets needing attention', '');
+              for (const r of notOk.slice(0, 20)) {
+                const reasons = r.reasons.length ? r.reasons.join('; ') : '—';
+                lines.push(
+                  `- **${r.verdict.toUpperCase()}** \`${r.url}\` @ \`${r.viewport}\` — ${reasons}`
+                );
+              }
+              if (notOk.length > 20) {
+                lines.push(`- …and ${notOk.length - 20} more`);
+              }
+            }
+            lines.push(
+              '',
+              `<sub>Full artifacts (screenshots, diffs, HTML report): see the **visual-check-${process.env.PR_NUMBER}** artifact on [the run](${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.RUN_ID}).</sub>`
+            );
+            const body = lines.join('\n');
+
+            // Update an existing comment from this action, or create a new one
+            const { owner, repo } = context.repo;
+            const pr = Number(process.env.PR_NUMBER);
+            const marker = '<!-- visual-check-comment -->';
+            const { data: comments } = await github.rest.issues.listComments({
+              owner, repo, issue_number: pr, per_page: 100,
+            });
+            const existing = comments.find((c) => c.body && c.body.includes(marker));
+            const finalBody = `${marker}\n${body}`;
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner, repo, comment_id: existing.id, body: finalBody,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner, repo, issue_number: pr, body: finalBody,
+              });
+            }
+
+      - name: Enforce exit code
+        if: always()
+        run: |
+          code="${{ steps.check.outputs.exit_code }}"
+          echo "visual-check exited with $code"
+          exit "$code"

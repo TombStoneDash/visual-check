@@ -1,0 +1,55 @@
+{
+  "name": "@noui/visual-check",
+  "version": "0.1.0",
+  "description": "Deploy-time visual verification for AI agents. Don't let your agent say 'done' until it has shown its work.",
+  "type": "module",
+  "bin": {
+    "visual-check": "./dist/cli.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/cli.ts",
+    "cli": "node dist/cli.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "start": "node dist/cli.js",
+    "link:global": "npm link",
+    "postinstall": "playwright install chromium",
+    "baseline:portfolio": "npm run build --silent && node dist/cli.js baseline --urls https://trashalert.io,https://actorlab.io,https://lims.bot,https://noui.bot,https://prelithic.build",
+    "check:portfolio": "npm run build --silent && node dist/cli.js run --urls https://trashalert.io,https://actorlab.io,https://lims.bot,https://noui.bot,https://prelithic.build --json reports/latest.json"
+  },
+  "dependencies": {
+    "commander": "^12.1.0",
+    "pixelmatch": "^6.0.0",
+    "playwright": "^1.48.0",
+    "pngjs": "^7.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.5",
+    "@types/pixelmatch": "^5.2.6",
+    "@types/pngjs": "^6.0.5",
+    "tsx": "^4.19.1",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.9"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "visual-testing",
+    "regression",
+    "playwright",
+    "deploy-gate",
+    "ai-agents",
+    "noui-bot"
+  ],
+  "license": "UNLICENSED",
+  "private": true
+}

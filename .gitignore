@@ -1,0 +1,18 @@
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Visual Check artifacts
+captures/
+diffs/
+reports/
+
+# Local baseline screenshots — regenerable from `visual-check baseline`
+# or seeded from a deploy-gate run, so they don't belong in git.
+baselines/
+
+.env
+.env.local
+.DS_Store
+.vscode/
+.idea/
