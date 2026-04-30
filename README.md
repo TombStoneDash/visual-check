@@ -229,7 +229,7 @@ Visual Check runs Playwright against URLs you provide. A few things to know:
 
 ## Self-hosting
 
-V1 runs entirely on your machine or CI runner (no external service). Just `npm install` and `npx visual-check run`.
+V1 runs entirely on your machine or CI runner (no external service). Clone, `npm install`, `npm run build`, then `npx visual-check run` (or `node dist/cli.js run`).
 
 For Phase 2 (Supabase + Telegram), you need:
 - A Supabase project (free tier supports Visual Check easily)
