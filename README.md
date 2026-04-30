@@ -26,6 +26,12 @@ That's it.
 ## How it works in 60 seconds
 
 ```bash
+# 0. One-time setup from a clean clone
+git clone https://github.com/TombStoneDash/visual-check.git
+cd visual-check
+npm install            # also runs `playwright install chromium`
+npm run build          # compiles the CLI to dist/cli.js
+
 # 1. Capture baselines (one time per site)
 npx visual-check baseline --urls https://mysite.com
 
@@ -44,13 +50,16 @@ That's the core. Phase 2 adds cloud storage, Telegram alerts, and automated base
 
 ## Install
 
+From a clean clone:
+
 ```bash
+git clone https://github.com/TombStoneDash/visual-check.git
 cd visual-check
-npm install
-# npm install also runs `playwright install chromium`
+npm install            # also runs `playwright install chromium` (~120 MB)
+npm run build          # compiles the CLI to dist/cli.js (required before npx)
 ```
 
-Requires Node 20+.
+Requires Node 20+. After `npm run build`, `npx visual-check ...` and `node dist/cli.js ...` both work.
 
 ## Quick reference
 
@@ -81,8 +90,7 @@ Writes captured screenshots, diffs, and a JSON + HTML report. All file paths are
 
 ## Screenshots
 
-![Visual Check in action](./docs/screenshot-placeholder.png)
-*[Placeholder: three-column layout showing mobile baseline, mobile capture, and diff overlay. HTML report with summary header and collapsible checks detail.]*
+_Placeholder — a real HTML report screenshot will be added before public launch. The report renders a three-column layout (mobile baseline / mobile capture / diff overlay), with a sticky summary header and collapsible per-check detail._
 
 ---
 
