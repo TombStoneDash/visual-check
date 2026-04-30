@@ -100,7 +100,12 @@ jobs:
             echo "threshold=${{ github.event.inputs.threshold }}" >> "$GITHUB_OUTPUT"
           else
             echo "urls=${{ needs.wait-for-preview.outputs.preview_url }}" >> "$GITHUB_OUTPUT"
-            echo "threshold=5" >> "$GITHUB_OUTPUT"
+            # Per-project default threshold; see THRESHOLDS.md at repo root.
+            case "${{ vars.VISUAL_CHECK_PROJECT_ID || 'visual-check' }}" in
+              trashalert) THRESHOLD="0.1" ;;
+              *) THRESHOLD="5" ;;
+            esac
+            echo "threshold=$THRESHOLD" >> "$GITHUB_OUTPUT"
           fi
 
       # Baselines live in Supabase as of Phase 2. If a new route lacks an
