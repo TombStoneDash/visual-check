@@ -25,23 +25,33 @@ That's it.
 
 ## How it works in 60 seconds
 
+The package is **not yet published to npm**. Today you run it from a clean clone:
+
 ```bash
-# 0. One-time setup from a clean clone
+# 0. One-time setup
 git clone https://github.com/TombStoneDash/visual-check.git
 cd visual-check
 npm install            # also runs `playwright install chromium`
 npm run build          # compiles the CLI to dist/cli.js
 
 # 1. Capture baselines (one time per site)
-npx visual-check baseline --urls https://mysite.com
+node dist/cli.js baseline --urls https://mysite.com
 
 # 2. After a deploy, run a check
-npx visual-check run --urls https://mysite.com --json report.json
+node dist/cli.js run --urls https://mysite.com --json report.json
 
 # 3. Exit code tells your agent what to do
 #    0 = pass/warn (continue), 1 = fail/error/needs_baseline (stop)
 
 # The report.json has all the details. The report.html is human-readable.
+```
+
+Once we publish to npm, the same flow becomes:
+
+```bash
+npm install -g @noui/visual-check
+visual-check baseline --urls https://mysite.com
+visual-check run --urls https://mysite.com --json report.json
 ```
 
 That's the core. Phase 2 adds cloud storage, Telegram alerts, and automated baseline approval.
@@ -50,23 +60,41 @@ That's the core. Phase 2 adds cloud storage, Telegram alerts, and automated base
 
 ## Install
 
-From a clean clone:
+### From source (today)
 
 ```bash
 git clone https://github.com/TombStoneDash/visual-check.git
 cd visual-check
 npm install            # also runs `playwright install chromium` (~120 MB)
-npm run build          # compiles the CLI to dist/cli.js (required before npx)
+npm run build          # compiles the CLI to dist/cli.js (required)
 ```
 
-Requires Node 20+. After `npm run build`, `npx visual-check ...` and `node dist/cli.js ...` both work.
+Requires Node 20+. The CLI is invoked with either:
+
+- `node dist/cli.js <command> ...` (works from any directory once built)
+- `npm run cli -- <command> ...` (works from the repo root)
+
+Examples below use `node dist/cli.js` because it is the most explicit.
+
+### From npm (coming soon)
+
+Not yet published. Once published, you will be able to:
+
+```bash
+npm install -g @noui/visual-check
+visual-check <command> ...
+# or one-off, no install:
+npx @noui/visual-check <command> ...
+```
+
+We will update this README and tag a release when the npm package is live.
 
 ## Quick reference
 
 ### Capture baselines
 
 ```bash
-npx visual-check baseline \
+node dist/cli.js baseline \
   --urls https://mysite.com,https://mysite.com/pricing,https://mysite.com/about \
   --viewports mobile,tablet,desktop \
   --out ./workspace
@@ -77,7 +105,7 @@ Writes `.png` baselines to `./workspace/baselines/`.
 ### Run a check
 
 ```bash
-npx visual-check run \
+node dist/cli.js run \
   --urls https://mysite.com \
   --viewports mobile,desktop \
   --threshold 5 \
@@ -229,7 +257,7 @@ Visual Check runs Playwright against URLs you provide. A few things to know:
 
 ## Self-hosting
 
-V1 runs entirely on your machine or CI runner (no external service). Clone, `npm install`, `npm run build`, then `npx visual-check run` (or `node dist/cli.js run`).
+V1 runs entirely on your machine or CI runner (no external service). Clone, `npm install`, `npm run build`, then `node dist/cli.js run ...` (or `npm run cli -- run ...`).
 
 For Phase 2 (Supabase + Telegram), you need:
 - A Supabase project (free tier supports Visual Check easily)
@@ -252,10 +280,10 @@ Until then, the CLI in this repo runs everything you need locally or in CI.
 
 ### Commands
 
-#### `visual-check baseline`
+#### `baseline`
 
 ```bash
-npx visual-check baseline \
+node dist/cli.js baseline \
   --urls https://mysite.com \
   --viewports mobile,tablet,desktop \
   --out ./workspace \
@@ -269,10 +297,10 @@ npx visual-check baseline \
 | `--out` | `.` | Workspace root. Baselines go under `<out>/baselines/`. |
 | `--headed` | off | Show the browser window (debugging). |
 
-#### `visual-check run`
+#### `run`
 
 ```bash
-npx visual-check run \
+node dist/cli.js run \
   --urls https://mysite.com \
   --viewports mobile,desktop \
   --threshold 5 \
@@ -298,10 +326,10 @@ npx visual-check run \
 
 Exit code: `0` (pass/warn), `1` (fail/error/needs_baseline), `2` (fatal CLI error).
 
-#### `visual-check promote` (Phase 2)
+#### `promote` (Phase 2)
 
 ```bash
-npx visual-check promote \
+node dist/cli.js promote \
   --run-id vc_abc123 \
   --targets "https://mysite.com@mobile,https://mysite.com@desktop" \
   --approved-by HT
