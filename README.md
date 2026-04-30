@@ -295,6 +295,14 @@ npm run check:portfolio      # run checks; writes reports/latest.{json,html}
 4. **Free internally, metered externally.** V1 costs $0 to run locally; cloud runner comes in V3.
 5. **Fail closed.** When a baseline is missing or a capture errors, the run is not pass. The agent should never get a green verdict from silence.
 
+## License
+
+Visual Check is released under the [Apache License 2.0](./LICENSE).
+
+Copyright © 2026 Tombstone Dash LLC.
+
+The Apache 2.0 license includes an explicit patent grant, which we chose deliberately for an AI-agent infrastructure project where downstream users need predictable IP terms.
+
 ---
 
 _"Don't let your agent say 'done' until it has shown its work."_

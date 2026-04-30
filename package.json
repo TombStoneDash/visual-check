@@ -10,7 +10,8 @@
   "types": "./dist/index.d.ts",
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
     "build": "tsc",
@@ -50,6 +51,14 @@
     "ai-agents",
     "noui-bot"
   ],
-  "license": "UNLICENSED",
-  "private": true
+  "license": "Apache-2.0",
+  "author": "Tombstone Dash LLC",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TombStoneDash/visual-check.git"
+  },
+  "bugs": {
+    "url": "https://github.com/TombStoneDash/visual-check/issues"
+  },
+  "homepage": "https://github.com/TombStoneDash/visual-check#readme"
 }
