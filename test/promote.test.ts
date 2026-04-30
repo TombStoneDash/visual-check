@@ -160,6 +160,66 @@ describe('runPromote', () => {
     expect(storage.uploadArtifact).toHaveBeenCalledTimes(2);
   });
 
+  it('skips fail targets when accept-fail mode is off (default)', async () => {
+    vi.mocked(db.getRun).mockResolvedValue({
+      run: {
+        id: 'vc_intentional',
+        project_id: 'trashalert',
+        verdict: 'fail',
+        config: {
+          urls: ['https://x.io'],
+          viewports: ['mobile', 'desktop'],
+          pixel_diff_threshold: 0.1,
+          load_time_warn_ms: 3000,
+          lane,
+        },
+        html_report_path: null,
+      },
+      results: [
+        { url: 'https://x.io', viewport: 'mobile', verdict: 'fail', screenshot_path: 'k1.png' },
+        { url: 'https://x.io', viewport: 'desktop', verdict: 'fail', screenshot_path: 'k2.png' },
+      ],
+    });
+
+    const result = await runPromote({ runId: 'vc_intentional', log: () => {} });
+    expect(result.promoted).toHaveLength(0);
+    expect(result.skipped).toHaveLength(2);
+    expect(result.skipped[0]!.reason).toContain('fail');
+    expect(db.upsertBaseline).not.toHaveBeenCalled();
+  });
+
+  it('promotes fail targets when acceptFail=true (intentional UI change)', async () => {
+    vi.mocked(db.getRun).mockResolvedValue({
+      run: {
+        id: 'vc_intentional',
+        project_id: 'trashalert',
+        verdict: 'fail',
+        config: {
+          urls: ['https://x.io'],
+          viewports: ['mobile', 'desktop'],
+          pixel_diff_threshold: 0.1,
+          load_time_warn_ms: 3000,
+          lane,
+        },
+        html_report_path: null,
+      },
+      results: [
+        { url: 'https://x.io', viewport: 'mobile', verdict: 'fail', screenshot_path: 'k1.png' },
+        { url: 'https://x.io', viewport: 'desktop', verdict: 'fail', screenshot_path: 'k2.png' },
+        { url: 'https://x.io', viewport: 'tablet', verdict: 'error', screenshot_path: 'k3.png' },
+      ],
+    });
+
+    const result = await runPromote({ runId: 'vc_intentional', acceptFail: true, approvedBy: 'HT', log: () => {} });
+    expect(result.promoted).toHaveLength(2);
+    expect(result.skipped).toHaveLength(1);
+    // error verdicts (capture failures) remain rejected even in accept-fail mode
+    expect(result.skipped[0]!.viewport).toBe('tablet');
+    expect(result.skipped[0]!.reason).toContain('error');
+    expect(db.upsertBaseline).toHaveBeenCalledTimes(2);
+    expect(storage.uploadArtifact).toHaveBeenCalledTimes(2);
+  });
+
   it('respects --targets=selected and only promotes chosen pairs', async () => {
     vi.mocked(db.getRun).mockResolvedValue({
       run: {

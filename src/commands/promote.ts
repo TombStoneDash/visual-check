@@ -23,6 +23,13 @@ export interface PromoteOptions {
    * run of a new project, before any baselines exist in the cloud.
    */
   seed?: boolean;
+  /**
+   * Accept-fail mode: also accept `fail` targets. Used to re-baseline
+   * after an intentional UI change that the gate correctly caught.
+   * `error` verdicts are still rejected — those are infrastructure
+   * problems (capture failed), not approvable changes.
+   */
+  acceptFail?: boolean;
   log?: (line: string) => void;
 }
 
@@ -75,7 +82,8 @@ export async function runPromote(opts: PromoteOptions): Promise<PromoteResult> {
       const accepted =
         r.verdict === 'pass' ||
         r.verdict === 'warn' ||
-        (opts.seed === true && r.verdict === 'needs_baseline');
+        (opts.seed === true && r.verdict === 'needs_baseline') ||
+        (opts.acceptFail === true && r.verdict === 'fail');
       if (!accepted) {
         skipped.push({ url: r.url, viewport: r.viewport, reason: `verdict=${r.verdict}` });
         continue;

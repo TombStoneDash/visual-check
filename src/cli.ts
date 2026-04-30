@@ -430,6 +430,11 @@ program
     'Also accept needs_baseline targets — for first-run seeding of a new project',
     false,
   )
+  .option(
+    '--accept-fail',
+    'Also accept fail targets — for re-baselining after an intentional UI change',
+    false,
+  )
   .action(
     async (opts: {
       runId: string;
@@ -437,6 +442,7 @@ program
       select?: string;
       approvedBy?: string;
       seed?: boolean;
+      acceptFail?: boolean;
     }) => {
       const selected =
         opts.targets === 'selected' && opts.select
@@ -457,6 +463,7 @@ program
         selected,
         approvedBy: opts.approvedBy,
         seed: opts.seed === true,
+        acceptFail: opts.acceptFail === true,
       });
 
       if (promoted.length === 0) {
