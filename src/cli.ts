@@ -11,6 +11,7 @@ import {
   writeJsonReport,
 } from './report.js';
 import { renderHtmlReport, htmlReportPathFor } from './html-report.js';
+import { receiptPathFor, writeReceipt } from './receipt.js';
 import { runPool } from './pool.js';
 import {
   BaselineLane,
@@ -151,6 +152,7 @@ program
   .option('--concurrency <n>', 'Parallel captures per browser', '3')
   .option('--json <path>', 'Write JSON report to this path')
   .option('--html <path>', 'Write HTML report to this path (also emitted alongside --json by default)')
+  .option('--receipt <path>', 'Write terminal-state receipt to this path (defaults alongside --json)')
   .option('--no-html', 'Skip HTML report even when --json is set')
   .option('--quiet', 'Suppress per-target console output', false)
   .option('--headed', 'Run Chromium headed (for debugging)', false)
@@ -164,6 +166,7 @@ program
       concurrency: string;
       json?: string;
       html?: string;
+      receipt?: string;
       quiet?: boolean;
       headed?: boolean;
     }) => {
@@ -308,8 +311,9 @@ program
       //   --no-html                → disable
       //   (opts.html is undefined → default; 'false' → disabled by --no-html)
       const htmlEnabled = (opts as { html?: string | false }).html !== false;
+      let htmlPath: string | null = null;
       if (htmlEnabled) {
-        const htmlPath =
+        htmlPath =
           typeof opts.html === 'string'
             ? opts.html
             : opts.json
@@ -320,6 +324,19 @@ program
           if (!opts.quiet) {
             console.log(`[visual-check] HTML report → ${path.resolve(htmlPath)}`);
           }
+        }
+      }
+
+      const receiptPath = opts.receipt ?? (opts.json ? receiptPathFor(opts.json) : null);
+      if (receiptPath) {
+        await writeReceipt({
+          report,
+          receiptPath,
+          jsonPath: opts.json,
+          htmlPath: htmlPath ?? undefined,
+        });
+        if (!opts.quiet) {
+          console.log(`[visual-check] receipt → ${path.resolve(receiptPath)}`);
         }
       }
 
@@ -352,6 +369,7 @@ program
   .option('--signed-url-ttl <s>', 'Signed URL TTL in seconds', String(60 * 60 * 24 * 7))
   .option('--json <path>', 'Local JSON report path (defaults to reports/<run-id>.json)')
   .option('--html <path>', 'Local HTML report path (defaults alongside JSON)')
+  .option('--receipt <path>', 'Local terminal-state receipt path (defaults alongside JSON)')
   .option('--quiet', 'Suppress per-target console output', false)
   .option('--headed', 'Run Chromium headed (for debugging)', false)
   .action(
@@ -369,6 +387,7 @@ program
       signedUrlTtl: string;
       json?: string;
       html?: string;
+      receipt?: string;
       quiet?: boolean;
       headed?: boolean;
     }) => {
@@ -405,6 +424,7 @@ program
         quiet: opts.quiet,
         jsonOutPath: opts.json,
         htmlOutPath: opts.html,
+        receiptOutPath: opts.receipt,
       });
 
       process.exit(report.pass ? 0 : 1);

@@ -2,8 +2,12 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import {
   BaselineLane,
+  CheckName,
+  CheckResult,
+  RunAssertion,
   RunReport,
   RunSummary,
+  TerminalState,
   TargetResult,
   ViewportSpec,
 } from './types.js';
@@ -19,6 +23,93 @@ export function summarize(results: TargetResult[]): RunSummary {
   };
 }
 
+function countCheckFailures(
+  results: TargetResult[],
+  name: CheckName,
+  statuses: CheckResult['status'][],
+): number {
+  return results.reduce(
+    (total, result) =>
+      total +
+      result.checks.filter((check) => check.name === name && statuses.includes(check.status)).length,
+    0,
+  );
+}
+
+export function buildAssertions(results: TargetResult[], summary: RunSummary): RunAssertion[] {
+  const captureErrors = summary.errors;
+  const httpFailures = countCheckFailures(results, 'http_status', ['fail', 'error']);
+  const visualFailures = countCheckFailures(results, 'pixel_diff', ['fail', 'error']);
+  const unspecifiedBlockingFailures =
+    summary.failed > 0 && httpFailures === 0 && visualFailures === 0
+      ? summary.failed
+      : 0;
+
+  return [
+    {
+      name: 'capture_completed',
+      status: captureErrors === 0 ? 'pass' : 'fail',
+      message:
+        captureErrors === 0
+          ? 'All targets produced a capture result.'
+          : `${captureErrors} target(s) ended with capture/runtime errors.`,
+      ...(captureErrors === 0 ? {} : { owner: 'runtime' as const }),
+    },
+    {
+      name: 'http_healthy',
+      status: httpFailures === 0 && unspecifiedBlockingFailures === 0 ? 'pass' : 'fail',
+      message:
+        httpFailures === 0 && unspecifiedBlockingFailures === 0
+          ? 'All target HTTP checks were healthy.'
+          : `${httpFailures + unspecifiedBlockingFailures} target(s) need site-owner investigation.`,
+      ...(httpFailures === 0 && unspecifiedBlockingFailures === 0
+        ? {}
+        : { owner: 'site-owner' as const }),
+    },
+    {
+      name: 'baselines_present',
+      status: summary.needs_baseline === 0 ? 'pass' : 'fail',
+      message:
+        summary.needs_baseline === 0
+          ? 'Every target had an approved baseline.'
+          : `${summary.needs_baseline} target(s) need baseline review.`,
+      ...(summary.needs_baseline === 0 ? {} : { owner: 'review-owner' as const }),
+    },
+    {
+      name: 'visual_diff_within_threshold',
+      status: visualFailures === 0 ? 'pass' : 'fail',
+      message:
+        visualFailures === 0
+          ? 'All visual diffs were within threshold.'
+          : `${visualFailures} target(s) exceeded the visual diff threshold.`,
+      ...(visualFailures === 0 ? {} : { owner: 'review-owner' as const }),
+    },
+    {
+      name: 'nonblocking_checks_clean',
+      status: summary.warnings === 0 ? 'pass' : 'fail',
+      message:
+        summary.warnings === 0
+          ? 'No warning-level checks fired.'
+          : `${summary.warnings} target(s) have warning-level checks to review.`,
+      ...(summary.warnings === 0 ? {} : { owner: 'review-owner' as const }),
+    },
+  ];
+}
+
+export function terminalStateForAssertions(assertions: RunAssertion[]): TerminalState {
+  const blocked = assertions.some(
+    (assertion) =>
+      assertion.status === 'fail' &&
+      (assertion.name === 'capture_completed' || assertion.name === 'http_healthy'),
+  );
+  if (blocked) return 'BLOCKED_WITH_OWNER';
+
+  const needsReview = assertions.some((assertion) => assertion.status === 'fail');
+  if (needsReview) return 'READY_TO_REVIEW';
+
+  return 'SHIPPED_PROVEN';
+}
+
 export function buildReport(params: {
   urls: string[];
   viewports: ViewportSpec[];
@@ -29,6 +120,8 @@ export function buildReport(params: {
 }): RunReport {
   const { urls, viewports, pixelDiffThreshold, loadTimeWarnMs, results, lane } = params;
   const summary = summarize(results);
+  const assertions = buildAssertions(results, summary);
+  const terminalState = terminalStateForAssertions(assertions);
   return {
     schema_version: 1,
     timestamp: new Date().toISOString(),
@@ -42,6 +135,8 @@ export function buildReport(params: {
     },
     results,
     summary,
+    assertions,
+    terminal_state: terminalState,
     pass: summary.failed === 0 && summary.errors === 0 && summary.needs_baseline === 0,
   };
 }

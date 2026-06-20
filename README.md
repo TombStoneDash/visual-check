@@ -183,9 +183,29 @@ The agent reads `report.json`. Shape:
     "errors": 0,
     "needs_baseline": 0
   },
+  "assertions": [
+    {
+      "name": "capture_completed",
+      "status": "pass",
+      "message": "All targets produced a capture result."
+    }
+  ],
+  "terminal_state": "SHIPPED_PROVEN",
   "pass": true
 }
 ```
+
+When `--json` is set, Visual Check also writes an adjacent receipt, for example
+`reports/latest.receipt.json`. The receipt repeats the terminal state, assertion
+owners, report artifact paths, and the next action for worker handoff.
+
+Terminal states:
+
+| State | Meaning |
+|-------|---------|
+| `SHIPPED_PROVEN` | Captures completed, HTTP is healthy, baselines exist, diffs are within threshold, and warning checks are clean. |
+| `READY_TO_REVIEW` | A human should review warnings, missing baselines, or visual diffs before promoting or fixing. |
+| `BLOCKED_WITH_OWNER` | Runtime/capture or HTTP assertions failed and need an assigned owner before retry. |
 
 Exit code logic:
 
@@ -320,6 +340,7 @@ node dist/cli.js run \
 | `--concurrency` | `3` | Parallel captures (1–16). Higher = faster but uses more memory. |
 | `--json <path>` | — | Write JSON verdict here (recommended for agents). |
 | `--html <path>` | — | Write HTML report here. Auto-generated adjacent to `--json` if not set. |
+| `--receipt <path>` | adjacent to `--json` | Write terminal-state receipt here. |
 | `--no-html` | off | Skip HTML generation. |
 | `--quiet` | off | Suppress per-target output lines. |
 | `--headed` | off | Show browser. |
