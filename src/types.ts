@@ -24,6 +24,25 @@ export type CheckMode = 'blocking' | 'warn' | 'skip';
 
 export type Verdict = 'pass' | 'fail' | 'warn' | 'needs_baseline' | 'error';
 
+export type TerminalState =
+  | 'SHIPPED_PROVEN'
+  | 'READY_TO_REVIEW'
+  | 'BLOCKED_WITH_OWNER';
+
+export type RunAssertionName =
+  | 'capture_completed'
+  | 'http_healthy'
+  | 'baselines_present'
+  | 'visual_diff_within_threshold'
+  | 'nonblocking_checks_clean';
+
+export interface RunAssertion {
+  name: RunAssertionName;
+  status: 'pass' | 'fail';
+  message: string;
+  owner?: 'runtime' | 'site-owner' | 'review-owner';
+}
+
 export interface ViewportSpec {
   name: string;
   width: number;
@@ -129,8 +148,35 @@ export interface RunReport {
   };
   results: TargetResult[];
   summary: RunSummary;
+  assertions: RunAssertion[];
+  terminal_state: TerminalState;
   /** True iff every target is pass or warn (no fail/error/needs_baseline) */
   pass: boolean;
+}
+
+export interface RunReceipt {
+  schema_version: 1;
+  timestamp: string;
+  run_id: string;
+  terminal_state: TerminalState;
+  pass: boolean;
+  summary: RunSummary;
+  assertions: RunAssertion[];
+  artifacts: {
+    json?: string;
+    html?: string;
+    receipt: string;
+    storage?: RunStorageKeys;
+  };
+  context: {
+    projectId?: string;
+    deploymentUrl?: string;
+    branch?: string;
+    commitSha?: string;
+    urls: string[];
+    viewports: string[];
+  };
+  next_action: string;
 }
 
 export interface CapturerOptions {

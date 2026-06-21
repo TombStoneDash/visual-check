@@ -13,6 +13,7 @@ import { diffPngs, fileExists } from '../diff.js';
 import { buildTargetResult } from '../checks.js';
 import { buildReport, formatSummary, formatTargetLine, writeJsonReport } from '../report.js';
 import { renderHtmlReport, htmlReportPathFor } from '../html-report.js';
+import { receiptPathFor, writeReceipt } from '../receipt.js';
 import { runPool } from '../pool.js';
 import * as storage from '../storage.js';
 import * as db from '../db.js';
@@ -42,6 +43,7 @@ export interface DeployGateOptions {
   quiet?: boolean;
   jsonOutPath?: string;
   htmlOutPath?: string;
+  receiptOutPath?: string;
   log?: (line: string) => void;
 }
 
@@ -249,6 +251,14 @@ export async function runDeployGate(opts: DeployGateOptions): Promise<DeployGate
     );
   }
   report.storageKeys = storageKeys;
+
+  const receiptPath = opts.receiptOutPath ?? receiptPathFor(jsonPath);
+  await writeReceipt({
+    report,
+    receiptPath,
+    jsonPath,
+    htmlPath,
+  });
 
   // --- Step 6: persist run + results in Postgres ---------------------------
   try {

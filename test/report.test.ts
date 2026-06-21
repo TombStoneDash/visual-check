@@ -3,6 +3,31 @@ import { buildReport, summarize } from '../src/report.js';
 import { BaselineLane, TargetResult, Verdict, ViewportSpec } from '../src/types.js';
 
 function mkTarget(verdict: Verdict): TargetResult {
+  const checks: TargetResult['checks'] =
+    verdict === 'pass'
+      ? [
+          { name: 'http_status', mode: 'blocking', status: 'pass', message: 'HTTP 200', blocking: false },
+          { name: 'pixel_diff', mode: 'blocking', status: 'pass', message: '1%', blocking: false },
+        ]
+      : verdict === 'warn'
+        ? [
+            { name: 'http_status', mode: 'blocking', status: 'pass', message: 'HTTP 200', blocking: false },
+            { name: 'pixel_diff', mode: 'blocking', status: 'pass', message: '1%', blocking: false },
+            { name: 'load_time', mode: 'warn', status: 'warn', message: 'slow', blocking: false },
+          ]
+        : verdict === 'fail'
+          ? [
+              { name: 'http_status', mode: 'blocking', status: 'pass', message: 'HTTP 200', blocking: false },
+              { name: 'pixel_diff', mode: 'blocking', status: 'fail', message: '12%', blocking: true },
+            ]
+          : verdict === 'needs_baseline'
+            ? [
+                { name: 'http_status', mode: 'blocking', status: 'pass', message: 'HTTP 200', blocking: false },
+                { name: 'pixel_diff', mode: 'blocking', status: 'skip', message: 'no baseline', blocking: false },
+              ]
+            : [
+                { name: 'http_status', mode: 'blocking', status: 'error', message: 'timeout', blocking: true },
+              ];
   return {
     url: 'https://example.com',
     viewport: 'mobile',
@@ -16,7 +41,7 @@ function mkTarget(verdict: Verdict): TargetResult {
     console_errors: 0,
     load_time_ms: 0,
     reasons: [],
-    checks: [],
+    checks,
   };
 }
 
@@ -56,6 +81,7 @@ describe('buildReport.pass', () => {
     });
     expect(r.pass).toBe(true);
     expect(r.summary.total).toBe(2);
+    expect(r.terminal_state).toBe('READY_TO_REVIEW');
   });
 
   it('is false when any target fails', () => {
@@ -68,6 +94,7 @@ describe('buildReport.pass', () => {
       lane,
     });
     expect(r.pass).toBe(false);
+    expect(r.terminal_state).toBe('READY_TO_REVIEW');
   });
 
   it('is false when any target errors', () => {
@@ -80,6 +107,7 @@ describe('buildReport.pass', () => {
       lane,
     });
     expect(r.pass).toBe(false);
+    expect(r.terminal_state).toBe('BLOCKED_WITH_OWNER');
   });
 
   it('is false when any target needs_baseline', () => {
@@ -92,6 +120,7 @@ describe('buildReport.pass', () => {
       lane,
     });
     expect(r.pass).toBe(false);
+    expect(r.terminal_state).toBe('READY_TO_REVIEW');
   });
 
   it('attaches lane, schema version, and run_id', () => {
@@ -106,5 +135,25 @@ describe('buildReport.pass', () => {
     expect(r.schema_version).toBe(1);
     expect(r.run_id).toMatch(/^vc_/);
     expect(r.config.lane).toEqual(lane);
+    expect(r.assertions.every((assertion) => assertion.status === 'pass')).toBe(true);
+    expect(r.terminal_state).toBe('SHIPPED_PROVEN');
+  });
+
+  it('blocks with owner on unhealthy HTTP even when the capture produced a report', () => {
+    const target = mkTarget('fail');
+    target.checks = [
+      { name: 'http_status', mode: 'blocking', status: 'fail', message: 'HTTP 500', blocking: true },
+      { name: 'pixel_diff', mode: 'blocking', status: 'skip', message: 'no baseline', blocking: false },
+    ];
+    const r = buildReport({
+      urls: ['https://example.com'],
+      viewports: vps,
+      pixelDiffThreshold: 5,
+      loadTimeWarnMs: 3000,
+      results: [target],
+      lane,
+    });
+    expect(r.terminal_state).toBe('BLOCKED_WITH_OWNER');
+    expect(r.assertions.find((assertion) => assertion.name === 'http_healthy')?.owner).toBe('site-owner');
   });
 });

@@ -17,6 +17,8 @@ export {
   V1_CHECK_MODES,
 } from './checks.js';
 export {
+  buildAssertions,
+  terminalStateForAssertions,
   summarize,
   buildReport,
   writeJsonReport,
@@ -24,5 +26,6 @@ export {
   formatSummary,
 } from './report.js';
 export { renderHtmlReport, htmlReportPathFor } from './html-report.js';
+export { buildReceipt, nextActionFor, receiptPathFor, writeReceipt } from './receipt.js';
 export { runPool } from './pool.js';
 export type { PoolResult } from './pool.js';

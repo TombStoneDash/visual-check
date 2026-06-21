@@ -166,6 +166,7 @@ async function buildHtml(report: RunReport): Promise<string> {
     <div class="sub">
       run <code>${esc(report.run_id)}</code> · ${esc(report.timestamp)} · lane
       <code>${esc(report.config.lane.browser)}/${esc(report.config.lane.os)}/${esc(report.config.lane.runner)}</code>
+      · terminal <code>${esc(report.terminal_state)}</code>
     </div>
     <div class="counts">
       <span>total: <b>${report.summary.total}</b></span>
