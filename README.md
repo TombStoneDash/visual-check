@@ -3,6 +3,10 @@
 > Deploy-time visual verification for AI agents.
 > Don't let your agent say "done" until it has shown its work.
 
+[![ci](https://github.com/TombStoneDash/visual-check/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/TombStoneDash/visual-check/actions/workflows/ci.yml)
+[![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![node](https://img.shields.io/badge/node-%3E%3D20-339933.svg)](package.json)
+
 ---
 
 ## The problem
@@ -15,7 +19,7 @@ If the verdict is `fail` or `error`, your agent stops. It doesn't promote the de
 
 That's it.
 
-**Currently dogfooded on TrashAlert** — deploy gate runs on every push, with Telegram alerts on failure and the HTML diff report attached. 96 unit tests pass on every CI run.
+**Currently dogfooded on TrashAlert** — deploy gate runs on every push, with Telegram alerts on failure and the HTML diff report attached. 113 unit tests pass on every CI run.
 
 ## Who it's for
 
@@ -361,7 +365,7 @@ Sets the results from `run-id` as the new approved baselines.
 ### Development
 
 ```bash
-npm test          # 96 unit tests (no browser required, ~10s)
+npm test          # 113 unit tests (no browser required, ~10s)
 npm run typecheck # strict TypeScript
 npm run build     # compile to dist/
 npm run dev       # tsx entrypoint for iteration
