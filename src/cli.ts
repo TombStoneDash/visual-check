@@ -22,6 +22,7 @@ import {
 } from './types.js';
 import { runDeployGate } from './commands/deploy-gate.js';
 import { runPromote } from './commands/promote.js';
+import { runCompare } from './commands/compare.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -341,6 +342,85 @@ program
       }
 
       // Exit 0 on pass/warn, 1 on fail/error/needs_baseline
+      process.exit(report.pass ? 0 : 1);
+    },
+  );
+
+// ---------------------------------------------------------------------------
+// compare — credential-free baseline-vs-current, no stored baselines
+// ---------------------------------------------------------------------------
+
+program
+  .command('compare')
+  .description(
+    'Compare a baseline URL/page against a current URL/page — no stored baselines, no credentials, no cloud service',
+  )
+  .requiredOption('--baseline <target>', 'Baseline URL or local file path')
+  .requiredOption('--current <target>', 'Current URL or local file path to compare against the baseline')
+  .option(
+    '--viewports <list>',
+    'Comma-separated viewport names (mobile,tablet,desktop)',
+    'mobile,desktop',
+  )
+  .option('--out <dir>', 'Workspace root directory', '.')
+  .option('--threshold <pct>', 'Pixel diff threshold (% of pixels changed)', '5')
+  .option('--load-time-warn <ms>', 'Load time warning threshold (ms)', '3000')
+  .option('--concurrency <n>', 'Parallel viewport captures', '2')
+  .option('--json <path>', 'Write JSON report to this path')
+  .option(
+    '--html <path>',
+    'Write HTML report to this path (defaults alongside --json, or a timestamped path under --out)',
+  )
+  .option('--receipt <path>', 'Write terminal-state receipt to this path (defaults alongside --json)')
+  .option('--no-html', 'Skip HTML report')
+  .option('--quiet', 'Suppress per-target console output', false)
+  .option('--headed', 'Run Chromium headed (for debugging)', false)
+  .action(
+    async (opts: {
+      baseline: string;
+      current: string;
+      viewports?: string;
+      out: string;
+      threshold: string;
+      loadTimeWarn: string;
+      concurrency: string;
+      json?: string;
+      html?: string | false;
+      receipt?: string;
+      quiet?: boolean;
+      headed?: boolean;
+    }) => {
+      const viewports = parseViewports(opts.viewports);
+      const threshold = parseFloat(opts.threshold);
+      const loadTimeWarnMs = parseInt(opts.loadTimeWarn, 10);
+      const concurrency = parseInt(opts.concurrency, 10);
+
+      if (Number.isNaN(threshold) || threshold < 0 || threshold > 100) {
+        throw new Error(`Invalid --threshold: ${opts.threshold}`);
+      }
+      if (Number.isNaN(loadTimeWarnMs) || loadTimeWarnMs <= 0) {
+        throw new Error(`Invalid --load-time-warn: ${opts.loadTimeWarn}`);
+      }
+      if (Number.isNaN(concurrency) || concurrency < 1 || concurrency > 16) {
+        throw new Error(`Invalid --concurrency: ${opts.concurrency} (expected 1..16)`);
+      }
+
+      const { report } = await runCompare({
+        baseline: opts.baseline,
+        current: opts.current,
+        viewports,
+        outRoot: opts.out,
+        threshold,
+        loadTimeWarnMs,
+        concurrency,
+        lane: localLane(),
+        headless: !opts.headed,
+        quiet: opts.quiet,
+        jsonOutPath: opts.json,
+        htmlOutPath: opts.html,
+        receiptOutPath: opts.receipt,
+      });
+
       process.exit(report.pass ? 0 : 1);
     },
   );

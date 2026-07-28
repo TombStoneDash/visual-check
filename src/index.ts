@@ -29,3 +29,9 @@ export { renderHtmlReport, htmlReportPathFor } from './html-report.js';
 export { buildReceipt, nextActionFor, receiptPathFor, writeReceipt } from './receipt.js';
 export { runPool } from './pool.js';
 export type { PoolResult } from './pool.js';
+export { resolveCompareTarget, buildCompareTargetResult, runCompare } from './commands/compare.js';
+export type {
+  CompareTarget,
+  CompareOptions,
+  CompareRunResult,
+} from './commands/compare.js';

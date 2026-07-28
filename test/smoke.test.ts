@@ -35,6 +35,9 @@ import {
   buildReceipt,
   nextActionFor,
   runPool,
+  resolveCompareTarget,
+  buildCompareTargetResult,
+  runCompare,
 } from '../src/index.js';
 
 describe('index exports smoke', () => {
@@ -61,6 +64,9 @@ describe('index exports smoke', () => {
     expect(typeof buildReceipt).toBe('function');
     expect(typeof nextActionFor).toBe('function');
     expect(typeof runPool).toBe('function');
+    expect(typeof resolveCompareTarget).toBe('function');
+    expect(typeof buildCompareTargetResult).toBe('function');
+    expect(typeof runCompare).toBe('function');
   });
 });
 

@@ -98,6 +98,37 @@ describe('diffPngs', () => {
     const stat = await fs.stat(d);
     expect(stat.size).toBeGreaterThan(0);
   });
+
+  it('computes the bounding box of the changed region for a known patch', async () => {
+    const a = path.join(tmp, 'a5.png');
+    const b = path.join(tmp, 'b5.png');
+    const d = path.join(tmp, 'd5.png');
+    await fs.writeFile(a, solidPng(100, 100, 200, 200, 200));
+    // Patch occupies pixels [0..9] x [0..9] (top-left corner).
+    await fs.writeFile(b, patchedPng(100, 100, 200, 200, 200, 10, 10));
+    const r = await diffPngs(a, b, d);
+    expect(r.changedRegion).toEqual({ x: 0, y: 0, width: 10, height: 10 });
+  });
+
+  it('returns a null changed region for identical images', async () => {
+    const a = path.join(tmp, 'a6.png');
+    const b = path.join(tmp, 'b6.png');
+    const d = path.join(tmp, 'd6.png');
+    await fs.writeFile(a, solidPng(20, 20, 10, 10, 10));
+    await fs.writeFile(b, solidPng(20, 20, 10, 10, 10));
+    const r = await diffPngs(a, b, d);
+    expect(r.changedRegion).toBeNull();
+  });
+
+  it('returns a null changed region on dimension mismatch', async () => {
+    const a = path.join(tmp, 'a7.png');
+    const b = path.join(tmp, 'b7.png');
+    const d = path.join(tmp, 'd7.png');
+    await fs.writeFile(a, solidPng(100, 100, 200, 200, 200));
+    await fs.writeFile(b, solidPng(50, 50, 200, 200, 200));
+    const r = await diffPngs(a, b, d);
+    expect(r.changedRegion).toBeNull();
+  });
 });
 
 describe('fileExists', () => {

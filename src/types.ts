@@ -50,6 +50,14 @@ export interface ViewportSpec {
   deviceScaleFactor?: number;
 }
 
+/** Pixel-space bounding box of the differing region between baseline and current. */
+export interface ChangedRegion {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export const DEFAULT_VIEWPORTS: ViewportSpec[] = [
   { name: 'mobile', width: 390, height: 844 },
   { name: 'tablet', width: 768, height: 1024 },
@@ -104,6 +112,8 @@ export interface TargetResult {
   screenshot: string;
   baseline: string | null;
   diff_image: string | null;
+  /** Bounding box of the changed pixels, when a diff was computed. */
+  changed_region?: ChangedRegion | null;
   console_errors: number;
   load_time_ms: number;
   reasons: string[];

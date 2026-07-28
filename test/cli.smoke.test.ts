@@ -50,7 +50,7 @@ describe('visual-check --help', () => {
     });
     expect(res.status, `stderr: ${res.stderr}`).toBe(0);
     const out = `${res.stdout}\n${res.stderr}`;
-    for (const cmd of ['baseline', 'run', 'deploy-gate', 'promote']) {
+    for (const cmd of ['baseline', 'run', 'compare', 'deploy-gate', 'promote']) {
       expect(out, `--help output should mention "${cmd}"`).toContain(cmd);
     }
     expect(out).toContain('visual-check');

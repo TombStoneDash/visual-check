@@ -256,6 +256,30 @@ describe('buildTargetResult — integration', () => {
     expect(t.pass).toBe(true);
   });
 
+  it('threads the diff changed_region through to the target result', () => {
+    const t = buildTargetResult({
+      cap: cap(),
+      diff: diff({ diffPercentage: 8, changedRegion: { x: 10, y: 20, width: 100, height: 50 } }),
+      baselineExists: true,
+      baselinePath: '/tmp/baseline.png',
+      pixelDiffThresholdPct: 5,
+      loadTimeWarnMs: 3000,
+    });
+    expect(t.changed_region).toEqual({ x: 10, y: 20, width: 100, height: 50 });
+  });
+
+  it('sets changed_region to null when there is no baseline', () => {
+    const t = buildTargetResult({
+      cap: cap(),
+      diff: null,
+      baselineExists: false,
+      baselinePath: '/tmp/baseline.png',
+      pixelDiffThresholdPct: 5,
+      loadTimeWarnMs: 3000,
+    });
+    expect(t.changed_region).toBeNull();
+  });
+
   it('surfaces capture errors as verdict=error', () => {
     const t = buildTargetResult({
       cap: cap({ error: 'net::ERR_FAILED', httpStatus: null, loadTimeMs: 0 }),

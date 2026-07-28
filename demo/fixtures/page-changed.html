@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Acme Widgets — Home</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font: 16px/1.5 -apple-system, system-ui, sans-serif;
+    color: #12181f;
+    background: #ffffff;
+  }
+  nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 32px;
+    border-bottom: 1px solid #e6e8eb;
+  }
+  nav .brand { font-weight: 700; font-size: 18px; }
+  nav .links a { margin-left: 24px; color: #444; text-decoration: none; font-size: 14px; }
+  .hero {
+    height: 300px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 24px;
+    /* Intentional visual regression for the demo: the hero backdrop and
+       CTA button were recolored in this "deploy". */
+    background: linear-gradient(135deg, #ff5a2b, #9c1c12);
+    color: #fff;
+  }
+  .hero h1 { margin: 0 0 12px; font-size: 32px; }
+  .hero p { margin: 0 0 20px; font-size: 16px; opacity: .9; max-width: 480px; }
+  .hero button {
+    padding: 12px 28px;
+    border: none;
+    border-radius: 6px;
+    background: #ffe600;
+    color: #9c1c12;
+    font-weight: 700;
+    font-size: 15px;
+    cursor: pointer;
+  }
+  main { padding: 40px 32px; max-width: 720px; margin: 0 auto; }
+  main h2 { font-size: 20px; }
+  main p { color: #555; }
+  @media (max-width: 480px) {
+    nav .links { display: none; }
+    .hero h1 { font-size: 24px; }
+  }
+</style>
+</head>
+<body>
+  <nav>
+    <span class="brand">Acme Widgets</span>
+    <span class="links">
+      <a href="#pricing">Pricing</a>
+      <a href="#docs">Docs</a>
+      <a href="#login">Log in</a>
+    </span>
+  </nav>
+  <section class="hero">
+    <h1>Ship widgets faster</h1>
+    <p>Acme Widgets helps small teams launch product features without
+       reinventing the plumbing every time.</p>
+    <button>Get started</button>
+  </section>
+  <main>
+    <h2>Why teams pick Acme</h2>
+    <p>Deterministic builds, predictable pricing, and a support team that
+       actually answers. This fixture page is intentionally simple — it
+       exists so Visual Check has something stable to compare against.</p>
+  </main>
+</body>
+</html>

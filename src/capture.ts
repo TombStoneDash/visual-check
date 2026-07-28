@@ -79,7 +79,9 @@ export class Capturer {
         waitUntil: 'networkidle',
         timeout: this.opts.navigationTimeoutMs,
       });
-      httpStatus = response?.status() ?? null;
+      // file:// navigation never yields an HTTP response — treat a
+      // successful local-page load as "200" rather than "no response".
+      httpStatus = response ? response.status() : url.startsWith('file:') ? 200 : null;
 
       // Stable-capture: disable animations, hide caret
       await page.addStyleTag({

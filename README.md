@@ -19,6 +19,15 @@ If the verdict is `fail` or `error`, your agent stops. It doesn't promote the de
 
 That's it.
 
+**New: `visual-check compare`** — a credential-free command that diffs two
+URLs or two local pages directly, no stored baseline required. See
+[`HACKATHON_DEMO.md`](./HACKATHON_DEMO.md) for the 60-second live sequence,
+or just run:
+
+```bash
+npm install && npm run build && npm run demo:smoke
+```
+
 **Currently dogfooded on TrashAlert** — deploy gate runs on every push, with Telegram alerts on failure and the HTML diff report attached. 113 unit tests pass on every CI run.
 
 ## Who it's for
@@ -119,6 +128,29 @@ node dist/cli.js run \
 ```
 
 Writes captured screenshots, diffs, and a JSON + HTML report. All file paths are relative to `--out` (default: current directory).
+
+### Compare two pages directly (no stored baseline)
+
+```bash
+node dist/cli.js compare \
+  --baseline https://mysite.com \
+  --current  https://staging.mysite.com \
+  --viewports mobile,desktop \
+  --threshold 5 \
+  --json reports/compare.json
+
+# --baseline / --current also accept local file paths (resolved to file:// URLs),
+# so you can compare two local HTML files with zero network access:
+node dist/cli.js compare \
+  --baseline old.html --current new.html \
+  --json reports/compare.json
+```
+
+No credentials, no pre-seeded baseline store — `compare` captures both sides
+in the same run, diffs them, and writes the same JSON/HTML/receipt artifacts
+as `run`. Exit code is `0` (pass/warn) or `1` (fail/error/needs_baseline),
+same as every other command. See [`HACKATHON_DEMO.md`](./HACKATHON_DEMO.md)
+for a full walkthrough.
 
 ## Screenshots
 
@@ -351,6 +383,42 @@ node dist/cli.js run \
 
 Exit code: `0` (pass/warn), `1` (fail/error/needs_baseline), `2` (fatal CLI error).
 
+#### `compare`
+
+```bash
+node dist/cli.js compare \
+  --baseline https://mysite.com \
+  --current  https://staging.mysite.com \
+  --viewports mobile,desktop \
+  --threshold 5 \
+  --json reports/compare.json
+```
+
+| Flag | Default | Notes |
+|------|---------|-------|
+| `--baseline` | required | URL or local file path. Local paths resolve to `file://` URLs. |
+| `--current` | required | Same as `--baseline`. This is the side reports label as the target `url`. |
+| `--viewports` | `mobile,desktop` | Subset of the three named sizes. |
+| `--out` | `.` | Workspace root. Captures go under `<out>/compare/<timestamp>/`. |
+| `--threshold` | `5` | Pixel diff % to trigger fail. |
+| `--load-time-warn` | `3000` | Load-time warning threshold in ms. |
+| `--concurrency` | `2` | Parallel viewport captures. |
+| `--json <path>` | — | Write JSON verdict here. |
+| `--html <path>` | — | Write HTML report here. Defaults alongside `--json`, or a timestamped path under `--out` if `--json` is omitted — `compare` always writes an HTML report unless `--no-html` is set. |
+| `--receipt <path>` | adjacent to `--json` | Write terminal-state receipt here. |
+| `--no-html` | off | Skip HTML generation. |
+| `--quiet` | off | Suppress per-target output lines. |
+| `--headed` | off | Show browser. |
+
+Unlike `run`/`deploy-gate`, `compare` needs no pre-seeded baseline: it
+captures both `--baseline` and `--current` in the same invocation. If the
+baseline side fails to capture, the target verdict is `needs_baseline` (with
+a `baseline_capture: ...` reason) rather than a false pass. The HTML report
+includes a changed-region overlay — a bounding box drawn over the current
+and diff screenshots — showing exactly where pixels differ.
+
+Exit code: `0` (pass/warn), `1` (fail/error/needs_baseline), `2` (fatal CLI error).
+
 #### `promote` (Phase 2)
 
 ```bash
@@ -365,20 +433,22 @@ Sets the results from `run-id` as the new approved baselines.
 ### Development
 
 ```bash
-npm test          # 113 unit tests (no browser required, ~10s)
+npm test          # unit tests (no browser required, ~10s)
 npm run typecheck # strict TypeScript
 npm run build     # compile to dist/
 npm run dev       # tsx entrypoint for iteration
+npm run demo:smoke # builds, then proves `compare` pass+fail against local fixtures (needs Chromium)
 ```
 
 Test suites:
 
 - `capture.test.ts` — URL slug handling
-- `checks.test.ts` — all 4 checks + verdict precedence
+- `checks.test.ts` — all 4 checks + verdict precedence + changed_region passthrough
 - `pool.test.ts` — concurrency semantics
-- `diff.test.ts` — pixelmatch integration, dimension mismatches
+- `diff.test.ts` — pixelmatch integration, dimension mismatches, changed-region bounding box
 - `report.test.ts` — summary accuracy, top-level pass flag
-- `html-report.test.ts` — XSS escaping, data URI embedding
+- `html-report.test.ts` — XSS escaping, data URI embedding, changed-region overlay
+- `compare.test.ts` — target resolution (URL/local file), orchestration (mocked capture/diff)
 
 ### Dogfooding
 
@@ -413,6 +483,11 @@ This is what catches our own regressions. Every claim in this README is grounded
 │       └── 2026-04-17T20-00-00-000Z/
 │           └── mysite-com/
 │               └── mobile.png  (only when baseline existed)
+├── compare/
+│   └── 2026-04-17T20-00-00-000Z/
+│       ├── baseline/mobile.png
+│       ├── current/mobile.png
+│       └── diff/mobile.png       (`compare` command — baseline/current captured in the same run)
 └── reports/
     ├── latest.json
     └── latest.html

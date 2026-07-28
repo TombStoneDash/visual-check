@@ -246,6 +246,7 @@ export function buildTargetResult(params: {
     screenshot: cap.screenshotPath,
     baseline: baselineExists ? baselinePath : null,
     diff_image: diff?.diffImagePath ?? null,
+    changed_region: diff && !diff.dimensionMismatch ? (diff.changedRegion ?? null) : null,
     console_errors: cap.consoleErrors.length,
     load_time_ms: cap.loadTimeMs,
     reasons,
