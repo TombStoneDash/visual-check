@@ -38,6 +38,18 @@ export function resolveCompareTarget(raw: string, baseDir: string = process.cwd(
   return { raw, url: pathToFileURL(abs).href, label };
 }
 
+/**
+ * A baseline capture is only usable when Playwright raised no navigation
+ * error *and* the response was healthy (2xx/3xx). Local `file://` captures
+ * normalize to httpStatus 200 in Capturer, so they are always eligible.
+ * A baseline that 404s (or otherwise errors) must never feed the pixel
+ * diff — that would silently compare against a broken page and report a
+ * false green.
+ */
+export function isHealthyBaseline(cap: CaptureArtifact): boolean {
+  return !cap.error && cap.httpStatus !== null && cap.httpStatus >= 200 && cap.httpStatus < 400;
+}
+
 /** Compose a TargetResult from a captured baseline + current pair (pure, testable). */
 export function buildCompareTargetResult(params: {
   baselineCap: CaptureArtifact;
@@ -48,7 +60,7 @@ export function buildCompareTargetResult(params: {
   loadTimeWarnMs: number;
 }): TargetResult {
   const { baselineCap, currentCap, currentLabel, diff, pixelDiffThresholdPct, loadTimeWarnMs } = params;
-  const baselineExists = !baselineCap.error;
+  const baselineExists = isHealthyBaseline(baselineCap);
   const cap: CaptureArtifact = { ...currentCap, url: currentLabel };
 
   const result = buildTargetResult({
@@ -62,6 +74,8 @@ export function buildCompareTargetResult(params: {
 
   if (baselineCap.error) {
     result.reasons = [`baseline_capture: ${baselineCap.error}`, ...result.reasons];
+  } else if (!baselineExists) {
+    result.reasons = [`baseline_http_status: HTTP ${baselineCap.httpStatus}`, ...result.reasons];
   }
   return result;
 }
@@ -121,7 +135,7 @@ export async function runCompare(opts: CompareOptions): Promise<CompareRunResult
       const baselineCap = await capturer.capture(baseline.url, j.vp, j.basePath);
       const currentCap = await capturer.capture(current.url, j.vp, j.capPath);
       let diff: DiffResult | null = null;
-      if (!baselineCap.error && !currentCap.error) {
+      if (isHealthyBaseline(baselineCap) && !currentCap.error) {
         try {
           diff = await diffPngs(j.basePath, j.capPath, j.diffPath);
         } catch {

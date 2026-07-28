@@ -2,6 +2,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import http from 'node:http';
+import type { AddressInfo } from 'node:net';
 
 // --- Hoisted mocks -----------------------------------------------------------
 // Same pattern as test/deploy-gate.test.ts: replace the browser + pixel-diff
@@ -16,11 +18,22 @@ vi.mock('../src/capture.js', () => ({
       const pathMod = await import('node:path');
       await fsp.mkdir(pathMod.dirname(outPath), { recursive: true });
       await fsp.writeFile(outPath, Buffer.from([137, 80, 78, 71]));
+      // Loopback fixtures (127.0.0.1/localhost) are real HTTP servers spun
+      // up by the health-gate regression tests below — resolve their real
+      // status so the test exercises actual response codes. Every other
+      // http(s) URL in this suite is a placeholder (never dialed) and keeps
+      // the pre-existing default of 200, matching a healthy capture.
+      let httpStatus = 200;
+      if (/^https?:\/\/(127\.0\.0\.1|localhost)(:|\/)/i.test(url)) {
+        const res = await fetch(url, { redirect: 'follow' });
+        await res.arrayBuffer().catch(() => {});
+        httpStatus = res.status;
+      }
       return {
         url,
         viewport: vp.name,
         screenshotPath: outPath,
-        httpStatus: 200,
+        httpStatus,
         consoleErrors: [],
         loadTimeMs: 100,
       };
@@ -46,6 +59,7 @@ vi.mock('../src/diff.js', () => ({
 import {
   resolveCompareTarget,
   buildCompareTargetResult,
+  isHealthyBaseline,
   runCompare,
 } from '../src/commands/compare.js';
 import { BaselineLane, CaptureArtifact } from '../src/types.js';
@@ -156,6 +170,35 @@ describe('buildCompareTargetResult', () => {
       loadTimeWarnMs: 3000,
     });
     expect(t.verdict).toBe('error');
+  });
+
+  it('fails closed with a bounded reason when the baseline captured HTTP 404 (no Playwright error)', () => {
+    const diff = diffResult({ diffPercentage: 0 });
+    const t = buildCompareTargetResult({
+      baselineCap: cap({ httpStatus: 404, screenshotPath: '/tmp/baseline.png' }),
+      currentCap: cap({ httpStatus: 200 }),
+      currentLabel: 'current.html',
+      diff,
+      pixelDiffThresholdPct: 5,
+      loadTimeWarnMs: 3000,
+    });
+    expect(t.verdict).toBe('needs_baseline');
+    expect(t.pass).toBe(false);
+    expect(t.diff_percentage).toBeNull();
+    expect(t.reasons).toContain('baseline_http_status: HTTP 404');
+    // The reason is bounded to the status line — no response body, headers,
+    // or URL leak into it.
+    expect(t.reasons.join(' ')).not.toMatch(/https?:\/\//);
+  });
+
+  it('isHealthyBaseline: 2xx/3xx are eligible, non-2xx/3xx and errored captures are not', () => {
+    expect(isHealthyBaseline(cap({ httpStatus: 200 }))).toBe(true);
+    expect(isHealthyBaseline(cap({ httpStatus: 301 }))).toBe(true);
+    expect(isHealthyBaseline(cap({ httpStatus: 399 }))).toBe(true);
+    expect(isHealthyBaseline(cap({ httpStatus: 404 }))).toBe(false);
+    expect(isHealthyBaseline(cap({ httpStatus: 500 }))).toBe(false);
+    expect(isHealthyBaseline(cap({ httpStatus: null }))).toBe(false);
+    expect(isHealthyBaseline(cap({ httpStatus: 200, error: 'net::ERR_FAILED' }))).toBe(false);
   });
 });
 
@@ -283,6 +326,137 @@ describe('runCompare orchestration', () => {
 
     expect(result.report.config.urls[0]).toContain('a.html');
     expect(result.report.config.urls[1]).toContain('b.html');
+    expect(result.report.pass).toBe(true);
+  });
+});
+
+describe('runCompare — baseline HTTP health gate (loopback fixtures)', () => {
+  // Regression for the false-green bug: a baseline that 404s (but never
+  // throws a Playwright navigation error) must not be treated as usable —
+  // even when its HTML is byte-identical to the current page's HTML. These
+  // tests dial a real HTTP server bound to 127.0.0.1 only; no external
+  // network access, no public URLs.
+  const lane: BaselineLane = { browser: 'chromium', os: 'linux', runner: 'thinkcentre-local' };
+  const identicalHtml = '<html><body>Identical content</body></html>';
+  let workRoot: string;
+  let server: http.Server;
+  let baseUrl: string;
+
+  beforeEach(async () => {
+    workRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'vc-compare-health-'));
+    vi.clearAllMocks();
+
+    server = http.createServer((req, res) => {
+      switch (req.url) {
+        case '/baseline-404':
+          res.writeHead(404, { 'Content-Type': 'text/html' });
+          res.end(identicalHtml);
+          return;
+        case '/current-200':
+          res.writeHead(200, { 'Content-Type': 'text/html' });
+          res.end(identicalHtml);
+          return;
+        case '/baseline-304':
+          // 304 is a bare 3xx status that fetch/browsers do NOT auto-follow
+          // (unlike 301/302/303/307/308), so it reaches isHealthyBaseline
+          // as a genuine 3xx rather than being resolved to the redirect
+          // target's status first.
+          res.writeHead(304);
+          res.end();
+          return;
+        default:
+          res.writeHead(404);
+          res.end();
+      }
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
+    const addr = server.address() as AddressInfo;
+    baseUrl = `http://127.0.0.1:${addr.port}`;
+  });
+
+  afterEach(async () => {
+    await new Promise<void>((resolve, reject) =>
+      server.close((err) => (err ? reject(err) : resolve())),
+    );
+    await fs.rm(workRoot, { recursive: true, force: true });
+  });
+
+  it('fails closed and never calls the diff seam when the baseline is HTTP 404, even with byte-identical HTML', async () => {
+    const { diffPngs } = await import('../src/diff.js');
+
+    const result = await runCompare({
+      baseline: `${baseUrl}/baseline-404`,
+      current: `${baseUrl}/current-200`,
+      viewports: [{ name: 'mobile', width: 390, height: 844 }],
+      outRoot: workRoot,
+      threshold: 5,
+      loadTimeWarnMs: 3000,
+      lane,
+      quiet: true,
+    });
+
+    expect(diffPngs).not.toHaveBeenCalled();
+    expect(result.report.pass).toBe(false);
+    expect(result.report.results[0]!.verdict).toBe('needs_baseline');
+    expect(result.report.results[0]!.diff_percentage).toBeNull();
+    expect(result.report.results[0]!.reasons).toContain('baseline_http_status: HTTP 404');
+  });
+
+  it('keeps a 3xx baseline eligible and does call the diff seam', async () => {
+    const { diffPngs } = await import('../src/diff.js');
+
+    const result = await runCompare({
+      baseline: `${baseUrl}/baseline-304`,
+      current: `${baseUrl}/current-200`,
+      viewports: [{ name: 'mobile', width: 390, height: 844 }],
+      outRoot: workRoot,
+      threshold: 5,
+      loadTimeWarnMs: 3000,
+      lane,
+      quiet: true,
+    });
+
+    expect(diffPngs).toHaveBeenCalledTimes(1);
+    expect(result.report.results[0]!.verdict).not.toBe('needs_baseline');
+  });
+
+  it('keeps a healthy 2xx baseline eligible and does call the diff seam', async () => {
+    const { diffPngs } = await import('../src/diff.js');
+
+    const result = await runCompare({
+      baseline: `${baseUrl}/current-200`,
+      current: `${baseUrl}/current-200`,
+      viewports: [{ name: 'mobile', width: 390, height: 844 }],
+      outRoot: workRoot,
+      threshold: 5,
+      loadTimeWarnMs: 3000,
+      lane,
+      quiet: true,
+    });
+
+    expect(diffPngs).toHaveBeenCalledTimes(1);
+    expect(result.report.pass).toBe(true);
+  });
+
+  it('keeps local file:// baselines eligible — Capturer normalizes them to HTTP 200', async () => {
+    const { diffPngs } = await import('../src/diff.js');
+    const fixtureA = path.join(workRoot, 'a.html');
+    const fixtureB = path.join(workRoot, 'b.html');
+    await fs.writeFile(fixtureA, identicalHtml);
+    await fs.writeFile(fixtureB, identicalHtml);
+
+    const result = await runCompare({
+      baseline: fixtureA,
+      current: fixtureB,
+      viewports: [{ name: 'mobile', width: 390, height: 844 }],
+      outRoot: workRoot,
+      threshold: 5,
+      loadTimeWarnMs: 3000,
+      lane,
+      quiet: true,
+    });
+
+    expect(diffPngs).toHaveBeenCalledTimes(1);
     expect(result.report.pass).toBe(true);
   });
 });
