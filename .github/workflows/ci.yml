@@ -20,9 +20,17 @@ jobs:
           node-version: "20"
           cache: "npm"
           cache-dependency-path: package-lock.json
-      # Skip the postinstall Playwright download — unit tests don't need a browser.
+      # Keep dependency installation deterministic; browser provisioning is
+      # explicit and cacheable because the capture contract runs real Chromium.
       - name: Install deps (no browser download)
         run: npm ci --ignore-scripts
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}
+      - name: Install Playwright Chromium (with system deps)
+        run: npx playwright install --with-deps chromium
       - name: Typecheck
         run: npm run typecheck
       - name: Unit tests
