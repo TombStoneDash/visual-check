@@ -68,6 +68,7 @@ import {
 } from '../src/commands/compare.js';
 import { BaselineLane, CaptureArtifact } from '../src/types.js';
 import { DiffResult } from '../src/diff.js';
+import { buildReport } from '../src/report.js';
 
 describe('resolveCompareTarget', () => {
   it('passes http(s) URLs through unchanged', () => {
@@ -165,7 +166,7 @@ describe('buildCompareTargetResult', () => {
       loadTimeWarnMs: 3000,
     });
     expect(t.verdict).toBe('needs_baseline');
-    expect(t.reasons[0]).toBe('baseline_capture: net::ERR_FILE_NOT_FOUND');
+    expect(t.reasons[0]).toBe('baseline_capture: resource_not_found');
     expect(t.reasons.join(' ')).not.toMatch(/file:\/\/|token|canary|Call log/i);
   });
 
@@ -229,6 +230,38 @@ describe('buildCompareTargetResult', () => {
     expect(t.baseline).toBeNull();
     expect(t.reasons).toContain('baseline_http_status: HTTP 404');
     expect(t.reasons).toContain('http_status: HTTP 500');
+  });
+
+  it('keeps needs_baseline while surfacing a simultaneous current capture error', () => {
+    const t = buildCompareTargetResult({
+      baselineCap: cap({ error: 'net::ERR_ABORTED', httpStatus: null }),
+      currentCap: cap({ error: 'net::ERR_FAILED', httpStatus: null }),
+      currentLabel: 'current.html',
+      diff: null,
+      pixelDiffThresholdPct: 5,
+      loadTimeWarnMs: 3000,
+    });
+    const report = buildReport({
+      urls: ['baseline.html', 'current.html'],
+      viewports: [{ name: 'mobile', width: 390, height: 844 }],
+      pixelDiffThreshold: 5,
+      loadTimeWarnMs: 3000,
+      results: [t],
+      lane: { browser: 'chromium', os: 'macos', runner: 'macmini-local' },
+    });
+
+    expect(t.verdict).toBe('needs_baseline');
+    expect(t.baseline).toBeNull();
+    expect(t.reasons).toContain('baseline_capture: navigation_aborted');
+    expect(t.reasons).toContain('http_status: navigation error: capture_failed');
+    expect(report.summary.needs_baseline).toBe(1);
+    expect(report.summary.errors).toBe(1);
+    expect(report.assertions.find((a) => a.name === 'baselines_present')?.status).toBe(
+      'fail',
+    );
+    expect(report.assertions.find((a) => a.name === 'capture_completed')?.status).toBe(
+      'fail',
+    );
   });
 });
 

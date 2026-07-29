@@ -86,6 +86,7 @@ export interface CaptureArtifact {
   viewport: string;
   screenshotPath: string;
   httpStatus: number | null;
+  /** Closed, bounded diagnostic categories; never raw page or request text. */
   consoleErrors: string[];
   loadTimeMs: number;
   error?: string;
@@ -125,6 +126,7 @@ export interface RunSummary {
   passed: number;
   failed: number;
   warnings: number;
+  /** Targets with any runtime/check error; may overlap another verdict count. */
   errors: number;
   needs_baseline: number;
 }

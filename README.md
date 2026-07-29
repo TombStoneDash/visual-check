@@ -418,6 +418,8 @@ URL baseline must produce a renderable document with a final status from 200
 through 399. Bare no-content/cache-only responses (204, 205, and 304) are not
 renderable Chromium navigations and therefore also yield `needs_baseline`.
 Raw browser logs and target URLs are not copied into capture-error reasons.
+Capture failures use a closed diagnostic vocabulary, while console, page, and
+request failures report only bounded category counts rather than raw page text.
 The HTML report
 includes a changed-region overlay — a bounding box drawn over the current
 and diff screenshots — showing exactly where pixels differ.

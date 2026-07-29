@@ -3,6 +3,38 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { CaptureArtifact, CapturerOptions, ViewportSpec } from './types.js';
 
+export const CAPTURE_ERROR_CATEGORIES = [
+  'navigation_aborted',
+  'redirect_loop',
+  'resource_not_found',
+  'name_resolution_failed',
+  'network_unavailable',
+  'tls_failed',
+  'navigation_timeout',
+  'capture_failed',
+] as const;
+
+export type CaptureErrorCategory = (typeof CAPTURE_ERROR_CATEGORIES)[number];
+
+const CAPTURE_ERROR_CATEGORY_SET = new Set<string>(CAPTURE_ERROR_CATEGORIES);
+
+const CHROMIUM_ERROR_CATEGORIES = new Map<string, CaptureErrorCategory>([
+  ['net::ERR_ABORTED', 'navigation_aborted'],
+  ['net::ERR_TOO_MANY_REDIRECTS', 'redirect_loop'],
+  ['net::ERR_FILE_NOT_FOUND', 'resource_not_found'],
+  ['net::ERR_NAME_NOT_RESOLVED', 'name_resolution_failed'],
+  ['net::ERR_CONNECTION_REFUSED', 'network_unavailable'],
+  ['net::ERR_CONNECTION_RESET', 'network_unavailable'],
+  ['net::ERR_CONNECTION_CLOSED', 'network_unavailable'],
+  ['net::ERR_INTERNET_DISCONNECTED', 'network_unavailable'],
+  ['net::ERR_ADDRESS_UNREACHABLE', 'network_unavailable'],
+  ['net::ERR_CERT_AUTHORITY_INVALID', 'tls_failed'],
+  ['net::ERR_CERT_COMMON_NAME_INVALID', 'tls_failed'],
+  ['net::ERR_CERT_DATE_INVALID', 'tls_failed'],
+  ['net::ERR_SSL_PROTOCOL_ERROR', 'tls_failed'],
+  ['net::ERR_FAILED', 'capture_failed'],
+]);
+
 /**
  * Reduce browser/runtime failures to a small, operator-useful vocabulary.
  *
@@ -10,17 +42,41 @@ import { CaptureArtifact, CapturerOptions, ViewportSpec } from './types.js';
  * may contain signed preview query strings, so raw messages must never enter
  * reports, receipts, or user-facing reasons.
  */
-export function sanitizeCaptureError(value: unknown): string {
+export function sanitizeCaptureError(value: unknown): CaptureErrorCategory {
   const raw = value instanceof Error ? value.message : String(value);
   const firstLine = raw.split(/\r?\n/, 1)[0]?.trim() ?? '';
-  if (firstLine === 'navigation_timeout' || firstLine === 'capture_failed') return firstLine;
+  if (CAPTURE_ERROR_CATEGORY_SET.has(firstLine)) return firstLine as CaptureErrorCategory;
   const diagnosticPrefix = firstLine.replace(/\s+at\s+(?:https?|file):\/\/.*$/i, '');
-  const networkCode = diagnosticPrefix.match(
-    /^(?:page\.goto:\s*)?net::(ERR_[A-Z0-9_]{1,64})$/,
-  );
-  if (networkCode) return `net::${networkCode[1]}`;
+  const chromiumDiagnostic = diagnosticPrefix.replace(/^page\.goto:\s*/i, '');
+  const trustedCategory = CHROMIUM_ERROR_CATEGORIES.get(chromiumDiagnostic);
+  if (trustedCategory) return trustedCategory;
   if (/\b(?:timeout|timed out)\b/i.test(diagnosticPrefix)) return 'navigation_timeout';
   return 'capture_failed';
+}
+
+export const CONSOLE_DIAGNOSTIC_CATEGORIES = [
+  'console_error',
+  'page_error',
+  'request_failed:script',
+  'request_failed:stylesheet',
+  'request_failed:image',
+  'request_failed:font',
+] as const;
+
+export type ConsoleDiagnosticCategory = (typeof CONSOLE_DIAGNOSTIC_CATEGORIES)[number];
+
+const CONSOLE_DIAGNOSTIC_CATEGORY_SET = new Set<string>(CONSOLE_DIAGNOSTIC_CATEGORIES);
+
+/**
+ * Collapse page-controlled console/request text to a closed category set.
+ * The report retains event counts and resource kind without copying raw page
+ * text, request URLs, query strings, or browser log detail.
+ */
+export function sanitizeConsoleDiagnostic(value: unknown): ConsoleDiagnosticCategory {
+  const diagnostic = String(value);
+  return CONSOLE_DIAGNOSTIC_CATEGORY_SET.has(diagnostic)
+    ? (diagnostic as ConsoleDiagnosticCategory)
+    : 'console_error';
 }
 
 /**
@@ -81,16 +137,16 @@ export class Capturer {
     const page = await context.newPage();
 
     page.on('console', (msg) => {
-      if (msg.type() === 'error') consoleErrors.push(msg.text());
+      if (msg.type() === 'error') consoleErrors.push('console_error');
     });
-    page.on('pageerror', (err) => {
-      consoleErrors.push(`PageError: ${err.message}`);
+    page.on('pageerror', () => {
+      consoleErrors.push('page_error');
     });
     page.on('requestfailed', (req) => {
       // Only count resource failures that block rendering
       const rt = req.resourceType();
       if (rt === 'script' || rt === 'stylesheet' || rt === 'image' || rt === 'font') {
-        consoleErrors.push(`RequestFailed(${rt}): ${req.url()}`);
+        consoleErrors.push(sanitizeConsoleDiagnostic(`request_failed:${rt}`));
       }
     });
 

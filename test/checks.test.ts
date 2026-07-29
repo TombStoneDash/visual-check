@@ -66,7 +66,7 @@ describe('checkHttpStatus', () => {
     );
     expect(r.status).toBe('error');
     expect(r.blocking).toBe(true);
-    expect(r.message).toBe('navigation error: net::ERR_NAME_NOT_RESOLVED');
+    expect(r.message).toBe('navigation error: name_resolution_failed');
     expect(r.message).not.toMatch(/https?:|token|canary|Call log/i);
   });
 
@@ -112,15 +112,23 @@ describe('checkConsoleErrors', () => {
     const r = checkConsoleErrors(cap({ consoleErrors: ['ReferenceError: foo'] }));
     expect(r.status).toBe('warn');
     expect(r.blocking).toBe(false);
+    expect(r.message).toBe('1 console error event(s): console_error=1');
   });
-  it('truncates long error lists in the message', () => {
-    const errs = Array.from({ length: 10 }, (_, i) => `err${i}`);
-    const r = checkConsoleErrors(cap({ consoleErrors: errs }));
-    expect(r.message).toMatch(/10 console error/);
-    // Should end with a "..." truncation marker rather than listing all 10
-    expect(r.message).toMatch(/\.\.\./);
-    // And should not include the later error indices verbatim
-    expect(r.message).not.toContain('err9');
+  it('collapses raw page and request detail to bounded category counts', () => {
+    const r = checkConsoleErrors(
+      cap({
+        consoleErrors: [
+          'net::ERR_ATTACKER_FAKE https://attacker.invalid/?token=CONSOLE_QUERY_CANARY',
+          'request_failed:image',
+          'request_failed:image',
+          'page_error',
+        ],
+      }),
+    );
+    expect(r.message).toBe(
+      '4 console error event(s): console_error=1, page_error=1, request_failed:image=2',
+    );
+    expect(r.message).not.toMatch(/https?:|token=|QUERY_CANARY|ERR_ATTACKER_FAKE/i);
   });
 });
 

@@ -5,7 +5,11 @@ import {
   TargetResult,
   Verdict,
 } from './types.js';
-import { sanitizeCaptureError } from './capture.js';
+import {
+  CONSOLE_DIAGNOSTIC_CATEGORIES,
+  sanitizeCaptureError,
+  sanitizeConsoleDiagnostic,
+} from './capture.js';
 import { DiffResult } from './diff.js';
 
 /**
@@ -119,14 +123,20 @@ export function checkConsoleErrors(cap: CaptureArtifact): CheckResult {
       blocking: false,
     };
   }
+  const counts = new Map<string, number>();
+  for (const rawDiagnostic of cap.consoleErrors) {
+    const diagnostic = sanitizeConsoleDiagnostic(rawDiagnostic);
+    counts.set(diagnostic, (counts.get(diagnostic) ?? 0) + 1);
+  }
+  const breakdown = CONSOLE_DIAGNOSTIC_CATEGORIES.flatMap((diagnostic) => {
+    const diagnosticCount = counts.get(diagnostic);
+    return diagnosticCount ? [`${diagnostic}=${diagnosticCount}`] : [];
+  }).join(', ');
   return {
     name: 'console_errors',
     mode,
     status: 'warn',
-    message: `${count} console error(s): ${cap.consoleErrors
-      .slice(0, 3)
-      .map((e) => e.slice(0, 80))
-      .join(' | ')}${count > 3 ? ' | ...' : ''}`,
+    message: `${count} console error event(s): ${breakdown}`,
     metric: count,
     threshold: 0,
     blocking: false,

@@ -4,7 +4,13 @@ import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
-import { Capturer, sanitizeCaptureError, urlToSlug } from '../src/capture.js';
+import {
+  Capturer,
+  CONSOLE_DIAGNOSTIC_CATEGORIES,
+  sanitizeCaptureError,
+  sanitizeConsoleDiagnostic,
+  urlToSlug,
+} from '../src/capture.js';
 
 describe('urlToSlug', () => {
   it('strips protocol and replaces dots in host', () => {
@@ -35,11 +41,11 @@ describe('urlToSlug', () => {
 });
 
 describe('sanitizeCaptureError', () => {
-  it('retains only a bounded Chromium network code', () => {
+  it('maps a known Chromium redirect failure to a trusted category', () => {
     const raw =
       'page.goto: net::ERR_TOO_MANY_REDIRECTS at https://preview.invalid/path?token=canary\nCall log:\nsecret details';
     const bounded = sanitizeCaptureError(new Error(raw));
-    expect(bounded).toBe('net::ERR_TOO_MANY_REDIRECTS');
+    expect(bounded).toBe('redirect_loop');
     expect(bounded).not.toMatch(/https?:|token|canary|Call log/i);
   });
 
@@ -64,11 +70,33 @@ describe('sanitizeCaptureError', () => {
     expect(bounded).toBe('capture_failed');
   });
 
+  it('does not trust a short attacker-shaped network code', () => {
+    expect(sanitizeCaptureError('net::ERR_ATTACKER_FAKE')).toBe('capture_failed');
+    expect(sanitizeCaptureError('page.goto: net::ERR_QUERY_SECRET')).toBe('capture_failed');
+  });
+
+  it('does not treat object prototype keys as trusted diagnostics', () => {
+    expect(sanitizeCaptureError('constructor')).toBe('capture_failed');
+    expect(sanitizeCaptureError('toString')).toBe('capture_failed');
+    expect(sanitizeCaptureError('__proto__')).toBe('capture_failed');
+  });
+
   it('does not mistake a URL query value for a browser network code', () => {
     const bounded = sanitizeCaptureError(
       'page.goto: unknown failure at https://preview.invalid/?token=net::ERR_QUERY_SECRET',
     );
     expect(bounded).toBe('capture_failed');
+  });
+});
+
+describe('sanitizeConsoleDiagnostic', () => {
+  it('preserves only closed diagnostic categories', () => {
+    expect(sanitizeConsoleDiagnostic('request_failed:image')).toBe('request_failed:image');
+    expect(
+      sanitizeConsoleDiagnostic(
+        'net::ERR_ATTACKER_FAKE https://attacker.invalid/?token=CONSOLE_QUERY_CANARY',
+      ),
+    ).toBe('console_error');
   });
 });
 
@@ -81,6 +109,23 @@ describe.sequential('Capturer renderable-response contract (real Chromium)', () 
   beforeAll(async () => {
     workRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'vc-capturer-status-'));
     server = http.createServer((req, res) => {
+      if (req.url?.startsWith('/broken-image')) {
+        req.socket.destroy();
+        return;
+      }
+
+      if (req.url?.startsWith('/adversarial-events')) {
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end(`<!doctype html>
+          <script>
+            console.error("net::ERR_ATTACKER_FAKE https://attacker.invalid/?token=CONSOLE_QUERY_CANARY");
+            setTimeout(() => { throw new Error("https://attacker.invalid/?token=PAGE_QUERY_CANARY"); }, 0);
+          </script>
+          <img src="/broken-image?token=REQUEST_QUERY_CANARY">
+          <body>renderable</body>`);
+        return;
+      }
+
       if (req.url?.startsWith('/redirect-loop')) {
         res.writeHead(302, { Location: '/redirect-loop' });
         res.end();
@@ -139,7 +184,7 @@ describe.sequential('Capturer renderable-response contract (real Chromium)', () 
       );
 
       expect(artifact.httpStatus).toBeNull();
-      expect(artifact.error).toBe('net::ERR_ABORTED');
+      expect(artifact.error).toBe('navigation_aborted');
       expect(artifact.error).not.toMatch(/https?:|127\.0\.0\.1|Call log/i);
     },
   );
@@ -151,8 +196,31 @@ describe.sequential('Capturer renderable-response contract (real Chromium)', () 
       path.join(workRoot, 'redirect-loop.png'),
     );
 
-    expect(artifact.error).toBe('net::ERR_TOO_MANY_REDIRECTS');
+    expect(artifact.error).toBe('redirect_loop');
     expect(artifact.error).not.toMatch(/https?:|127\.0\.0\.1|token|canary|Call log/i);
+  });
+
+  it('collapses real page, console, and request failures to closed categories', async () => {
+    const artifact = await capturer.capture(
+      `${baseUrl}/adversarial-events`,
+      { name: 'probe', width: 320, height: 240 },
+      path.join(workRoot, 'adversarial-events.png'),
+    );
+
+    expect(artifact.error).toBeUndefined();
+    expect(artifact.consoleErrors).toEqual(
+      expect.arrayContaining(['console_error', 'page_error', 'request_failed:image']),
+    );
+    expect(
+      artifact.consoleErrors.every((diagnostic) =>
+        CONSOLE_DIAGNOSTIC_CATEGORIES.includes(
+          diagnostic as (typeof CONSOLE_DIAGNOSTIC_CATEGORIES)[number],
+        ),
+      ),
+    ).toBe(true);
+    expect(artifact.consoleErrors.join(' ')).not.toMatch(
+      /https?:|token=|QUERY_CANARY|ERR_ATTACKER_FAKE|Call log/i,
+    );
   });
 
   it('captures an HTTP 404 artifact so compare can reject it by status', async () => {

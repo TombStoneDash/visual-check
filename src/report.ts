@@ -18,7 +18,12 @@ export function summarize(results: TargetResult[]): RunSummary {
     passed: results.filter((r) => r.verdict === 'pass').length,
     failed: results.filter((r) => r.verdict === 'fail').length,
     warnings: results.filter((r) => r.verdict === 'warn').length,
-    errors: results.filter((r) => r.verdict === 'error').length,
+    // Error is an independent runtime/check dimension rather than an
+    // exclusive verdict bucket. A target can truthfully need a baseline and
+    // also have a current-side capture error.
+    errors: results.filter(
+      (r) => r.verdict === 'error' || r.checks.some((check) => check.status === 'error'),
+    ).length,
     needs_baseline: results.filter((r) => r.verdict === 'needs_baseline').length,
   };
 }
