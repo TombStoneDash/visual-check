@@ -36,6 +36,28 @@ const CHROMIUM_ERROR_CATEGORIES = new Map<string, CaptureErrorCategory>([
 ]);
 
 /**
+ * Return only primitive diagnostic text from the narrow trusted cases we
+ * understand. Unknown values are intentionally not coerced: user-controlled
+ * objects can throw from proxy traps, Error.message getters, or coercion
+ * hooks, and their text must not cross the report boundary.
+ */
+function safeDiagnosticText(value: unknown): string | null {
+  if (typeof value === 'string') return value;
+
+  try {
+    if (!(value instanceof Error)) return null;
+  } catch {
+    return null;
+  }
+
+  try {
+    return typeof value.message === 'string' ? value.message : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Reduce browser/runtime failures to a small, operator-useful vocabulary.
  *
  * Playwright error messages include the navigated URL and a call log. URLs
@@ -43,14 +65,21 @@ const CHROMIUM_ERROR_CATEGORIES = new Map<string, CaptureErrorCategory>([
  * reports, receipts, or user-facing reasons.
  */
 export function sanitizeCaptureError(value: unknown): CaptureErrorCategory {
-  const raw = value instanceof Error ? value.message : String(value);
-  const firstLine = raw.split(/\r?\n/, 1)[0]?.trim() ?? '';
-  if (CAPTURE_ERROR_CATEGORY_SET.has(firstLine)) return firstLine as CaptureErrorCategory;
-  const diagnosticPrefix = firstLine.replace(/\s+at\s+(?:https?|file):\/\/.*$/i, '');
-  const chromiumDiagnostic = diagnosticPrefix.replace(/^page\.goto:\s*/i, '');
-  const trustedCategory = CHROMIUM_ERROR_CATEGORIES.get(chromiumDiagnostic);
-  if (trustedCategory) return trustedCategory;
-  if (/\b(?:timeout|timed out)\b/i.test(diagnosticPrefix)) return 'navigation_timeout';
+  try {
+    const raw = safeDiagnosticText(value);
+    if (raw === null) return 'capture_failed';
+
+    const firstLine = raw.split(/\r?\n/, 1)[0]?.trim() ?? '';
+    if (CAPTURE_ERROR_CATEGORY_SET.has(firstLine)) return firstLine as CaptureErrorCategory;
+    const diagnosticPrefix = firstLine.replace(/\s+at\s+(?:https?|file):\/\/.*$/i, '');
+    const chromiumDiagnostic = diagnosticPrefix.replace(/^page\.goto:\s*/i, '');
+    const trustedCategory = CHROMIUM_ERROR_CATEGORIES.get(chromiumDiagnostic);
+    if (trustedCategory) return trustedCategory;
+    if (/\b(?:timeout|timed out)\b/i.test(diagnosticPrefix)) return 'navigation_timeout';
+  } catch {
+    // The public boundary must be total even for hostile JavaScript values.
+  }
+
   return 'capture_failed';
 }
 
@@ -73,9 +102,8 @@ const CONSOLE_DIAGNOSTIC_CATEGORY_SET = new Set<string>(CONSOLE_DIAGNOSTIC_CATEG
  * text, request URLs, query strings, or browser log detail.
  */
 export function sanitizeConsoleDiagnostic(value: unknown): ConsoleDiagnosticCategory {
-  const diagnostic = String(value);
-  return CONSOLE_DIAGNOSTIC_CATEGORY_SET.has(diagnostic)
-    ? (diagnostic as ConsoleDiagnosticCategory)
+  return typeof value === 'string' && CONSOLE_DIAGNOSTIC_CATEGORY_SET.has(value)
+    ? (value as ConsoleDiagnosticCategory)
     : 'console_error';
 }
 

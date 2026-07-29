@@ -11,6 +11,55 @@ import {
   sanitizeConsoleDiagnostic,
   urlToSlug,
 } from '../src/capture.js';
+import { runCompare } from '../src/commands/compare.js';
+
+function hostileDiagnosticValues(): Array<{ name: string; value: unknown }> {
+  const throwingMessage = new Error('message must not be read');
+  Object.defineProperty(throwingMessage, 'message', {
+    get() {
+      throw new Error('attacker message getter');
+    },
+  });
+
+  const nonStringMessage = new Error('message must not be coerced');
+  Object.defineProperty(nonStringMessage, 'message', {
+    value: Object.create(null),
+  });
+
+  return [
+    { name: 'null-prototype object', value: Object.create(null) },
+    {
+      name: 'throwing Symbol.toPrimitive',
+      value: {
+        [Symbol.toPrimitive]() {
+          throw new Error('attacker coercion hook');
+        },
+      },
+    },
+    { name: 'throwing Error.message getter', value: throwingMessage },
+    { name: 'non-string Error.message', value: nonStringMessage },
+    {
+      name: 'proxy prototype trap',
+      value: new Proxy(
+        {},
+        {
+          getPrototypeOf() {
+            throw new Error('attacker prototype trap');
+          },
+        },
+      ),
+    },
+    {
+      name: 'proxy property trap',
+      value: new Proxy(new Error('message must not be read'), {
+        get(target, property, receiver) {
+          if (property === 'message') throw new Error('attacker property trap');
+          return Reflect.get(target, property, receiver);
+        },
+      }),
+    },
+  ];
+}
 
 describe('urlToSlug', () => {
   it('strips protocol and replaces dots in host', () => {
@@ -87,6 +136,11 @@ describe('sanitizeCaptureError', () => {
     );
     expect(bounded).toBe('capture_failed');
   });
+
+  it.each(hostileDiagnosticValues())('is total for $name', ({ value }) => {
+    expect(() => sanitizeCaptureError(value)).not.toThrow();
+    expect(sanitizeCaptureError(value)).toBe('capture_failed');
+  });
 });
 
 describe('sanitizeConsoleDiagnostic', () => {
@@ -97,6 +151,11 @@ describe('sanitizeConsoleDiagnostic', () => {
         'net::ERR_ATTACKER_FAKE https://attacker.invalid/?token=CONSOLE_QUERY_CANARY',
       ),
     ).toBe('console_error');
+  });
+
+  it.each(hostileDiagnosticValues())('is total for $name', ({ value }) => {
+    expect(() => sanitizeConsoleDiagnostic(value)).not.toThrow();
+    expect(sanitizeConsoleDiagnostic(value)).toBe('console_error');
   });
 });
 
@@ -220,6 +279,36 @@ describe.sequential('Capturer renderable-response contract (real Chromium)', () 
     ).toBe(true);
     expect(artifact.consoleErrors.join(' ')).not.toMatch(
       /https?:|token=|QUERY_CANARY|ERR_ATTACKER_FAKE|Call log/i,
+    );
+  });
+
+  it('preserves a current warning when the baseline is unusable', async () => {
+    const { report } = await runCompare({
+      baseline: `${baseUrl}/500`,
+      current: `${baseUrl}/adversarial-events`,
+      viewports: [{ name: 'probe', width: 320, height: 240 }],
+      outRoot: path.join(workRoot, 'warning-overlap'),
+      threshold: 100,
+      loadTimeWarnMs: 30_000,
+      lane: { browser: 'chromium', os: 'macos', runner: 'macmini-local' },
+      headless: true,
+      quiet: true,
+      htmlOutPath: false,
+    });
+
+    expect(report.results[0].verdict).toBe('needs_baseline');
+    expect(report.results[0].baseline).toBeNull();
+    expect(report.results[0].checks.find((check) => check.name === 'console_errors')?.status).toBe(
+      'warn',
+    );
+    expect(report.summary.needs_baseline).toBe(1);
+    expect(report.summary.warnings).toBe(1);
+    expect(report.assertions.find((a) => a.name === 'baselines_present')?.status).toBe('fail');
+    expect(report.assertions.find((a) => a.name === 'nonblocking_checks_clean')?.status).toBe(
+      'fail',
+    );
+    expect(JSON.stringify(report.results[0])).not.toMatch(
+      /https:\/\/attacker|token=|QUERY_CANARY|ERR_ATTACKER_FAKE|Call log/i,
     );
   });
 

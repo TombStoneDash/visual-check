@@ -125,6 +125,7 @@ export interface RunSummary {
   total: number;
   passed: number;
   failed: number;
+  /** Targets with any warning check; may overlap another verdict count. */
   warnings: number;
   /** Targets with any runtime/check error; may overlap another verdict count. */
   errors: number;
