@@ -8,7 +8,7 @@
  */
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
-import { Capturer, urlToSlug } from '../capture.js';
+import { Capturer, sanitizeCaptureError, urlToSlug } from '../capture.js';
 import { diffPngs, fileExists } from '../diff.js';
 import { buildTargetResult } from '../checks.js';
 import { buildReport, formatSummary, formatTargetLine, writeJsonReport } from '../report.js';
@@ -138,7 +138,7 @@ export async function runDeployGate(opts: DeployGateOptions): Promise<DeployGate
         if (r.ok) log('  ' + formatTargetLine(r.value));
         else
           log(
-            `  ERROR         ${targets[r.index]!.url} @ ${targets[r.index]!.vp.name} — ${r.error.message}`,
+            `  ERROR         ${targets[r.index]!.url} @ ${targets[r.index]!.vp.name} — ${sanitizeCaptureError(r.error)}`,
           );
       },
     );
@@ -147,6 +147,7 @@ export async function runDeployGate(opts: DeployGateOptions): Promise<DeployGate
         results[r.index] = r.value;
       } else {
         const t = targets[r.index]!;
+        const boundedError = sanitizeCaptureError(r.error);
         results[r.index] = buildTargetResult({
           cap: {
             url: t.url,
@@ -155,7 +156,7 @@ export async function runDeployGate(opts: DeployGateOptions): Promise<DeployGate
             httpStatus: null,
             consoleErrors: [],
             loadTimeMs: 0,
-            error: r.error.message,
+            error: boundedError,
           },
           diff: null,
           baselineExists: false,

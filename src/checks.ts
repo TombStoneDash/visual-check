@@ -5,6 +5,7 @@ import {
   TargetResult,
   Verdict,
 } from './types.js';
+import { sanitizeCaptureError } from './capture.js';
 import { DiffResult } from './diff.js';
 
 /**
@@ -78,7 +79,7 @@ export function checkHttpStatus(cap: CaptureArtifact): CheckResult {
       name: 'http_status',
       mode,
       status: 'error',
-      message: `navigation error: ${cap.error}`,
+      message: `navigation error: ${sanitizeCaptureError(cap.error)}`,
       blocking: true,
     };
   }

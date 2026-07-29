@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
 import path from 'node:path';
-import { Capturer, urlToSlug } from './capture.js';
+import { Capturer, sanitizeCaptureError, urlToSlug } from './capture.js';
 import { diffPngs, fileExists } from './diff.js';
 import { buildTargetResult } from './checks.js';
 import {
@@ -249,7 +249,9 @@ program
             if (r.ok) {
               console.log('  ' + formatTargetLine(r.value));
             } else {
-              console.log(`  ERROR         ${targets[r.index]!.url} @ ${targets[r.index]!.vp.name} — ${r.error.message}`);
+              console.log(
+                `  ERROR         ${targets[r.index]!.url} @ ${targets[r.index]!.vp.name} — ${sanitizeCaptureError(r.error)}`,
+              );
             }
           },
         );
@@ -259,6 +261,7 @@ program
           } else {
             // Synthesize an error TargetResult so the report shape is always complete
             const t = targets[r.index]!;
+            const boundedError = sanitizeCaptureError(r.error);
             results[r.index] = buildTargetResult({
               cap: {
                 url: t.url,
@@ -267,7 +270,7 @@ program
                 httpStatus: null,
                 consoleErrors: [],
                 loadTimeMs: 0,
-                error: r.error.message,
+                error: boundedError,
               },
               diff: null,
               baselineExists: false,

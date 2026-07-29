@@ -413,7 +413,12 @@ node dist/cli.js compare \
 Unlike `run`/`deploy-gate`, `compare` needs no pre-seeded baseline: it
 captures both `--baseline` and `--current` in the same invocation. If the
 baseline side fails to capture, the target verdict is `needs_baseline` (with
-a `baseline_capture: ...` reason) rather than a false pass. The HTML report
+a bounded `baseline_capture: ...` reason) rather than a false pass. A usable
+URL baseline must produce a renderable document with a final status from 200
+through 399. Bare no-content/cache-only responses (204, 205, and 304) are not
+renderable Chromium navigations and therefore also yield `needs_baseline`.
+Raw browser logs and target URLs are not copied into capture-error reasons.
+The HTML report
 includes a changed-region overlay — a bounding box drawn over the current
 and diff screenshots — showing exactly where pixels differ.
 

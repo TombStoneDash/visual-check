@@ -57,9 +57,17 @@ describe('checkHttpStatus', () => {
   });
 
   it('errors when navigation failed', () => {
-    const r = checkHttpStatus(cap({ error: 'net::ERR_NAME_NOT_RESOLVED', httpStatus: null }));
+    const r = checkHttpStatus(
+      cap({
+        error:
+          'page.goto: net::ERR_NAME_NOT_RESOLVED at https://preview.invalid/?token=canary\nCall log: details',
+        httpStatus: null,
+      }),
+    );
     expect(r.status).toBe('error');
     expect(r.blocking).toBe(true);
+    expect(r.message).toBe('navigation error: net::ERR_NAME_NOT_RESOLVED');
+    expect(r.message).not.toMatch(/https?:|token|canary|Call log/i);
   });
 
   it('fails when no HTTP response arrived', () => {

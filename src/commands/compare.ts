@@ -10,7 +10,7 @@
  */
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { Capturer } from '../capture.js';
+import { Capturer, sanitizeCaptureError } from '../capture.js';
 import { diffPngs, DiffResult } from '../diff.js';
 import { buildTargetResult } from '../checks.js';
 import { buildReport, formatSummary, formatTargetLine, writeJsonReport } from '../report.js';
@@ -39,15 +39,24 @@ export function resolveCompareTarget(raw: string, baseDir: string = process.cwd(
 }
 
 /**
- * A baseline capture is only usable when Playwright raised no navigation
- * error *and* the response was healthy (2xx/3xx). Local `file://` captures
- * normalize to httpStatus 200 in Capturer, so they are always eligible.
- * A baseline that 404s (or otherwise errors) must never feed the pixel
- * diff — that would silently compare against a broken page and report a
- * false green.
+ * A baseline capture is only usable when Playwright produced a renderable
+ * document with no navigation error and a final status in [200, 400).
+ * Chromium aborts bare no-content/cache-only navigations (204, 205, 304)
+ * before it can render a document, so those statuses are explicitly
+ * ineligible. Local `file://` captures normalize to 200 and remain eligible.
+ * An unusable baseline must never feed the pixel diff.
  */
 export function isHealthyBaseline(cap: CaptureArtifact): boolean {
-  return !cap.error && cap.httpStatus !== null && cap.httpStatus >= 200 && cap.httpStatus < 400;
+  const status = cap.httpStatus;
+  return (
+    !cap.error &&
+    status !== null &&
+    status >= 200 &&
+    status < 400 &&
+    status !== 204 &&
+    status !== 205 &&
+    status !== 304
+  );
 }
 
 /** Compose a TargetResult from a captured baseline + current pair (pure, testable). */
@@ -73,9 +82,20 @@ export function buildCompareTargetResult(params: {
   });
 
   if (baselineCap.error) {
-    result.reasons = [`baseline_capture: ${baselineCap.error}`, ...result.reasons];
+    result.reasons = [
+      `baseline_capture: ${sanitizeCaptureError(baselineCap.error)}`,
+      ...result.reasons,
+    ];
   } else if (!baselineExists) {
     result.reasons = [`baseline_http_status: HTTP ${baselineCap.httpStatus}`, ...result.reasons];
+  }
+  if (!baselineExists) {
+    // Baseline truth must remain visible even when the current side also has
+    // a blocking HTTP/capture failure. The checks and reasons retain the
+    // current-side failure, while the primary verdict drives the required
+    // baseline-review workflow and keeps baselines_present truthful.
+    result.verdict = 'needs_baseline';
+    result.pass = false;
   }
   return result;
 }
@@ -158,7 +178,10 @@ export async function runCompare(opts: CompareOptions): Promise<CompareRunResult
       (r) => {
         if (opts.quiet) return;
         if (r.ok) log('  ' + formatTargetLine(r.value));
-        else log(`  ERROR         ${current.label} @ ${jobs[r.index]!.vp.name} — ${r.error.message}`);
+        else
+          log(
+            `  ERROR         ${current.label} @ ${jobs[r.index]!.vp.name} — ${sanitizeCaptureError(r.error)}`,
+          );
       },
     );
     for (const r of pooled) {
@@ -166,6 +189,7 @@ export async function runCompare(opts: CompareOptions): Promise<CompareRunResult
         results[r.index] = r.value;
       } else {
         const j = jobs[r.index]!;
+        const boundedError = sanitizeCaptureError(r.error);
         results[r.index] = buildTargetResult({
           cap: {
             url: current.label,
@@ -174,7 +198,7 @@ export async function runCompare(opts: CompareOptions): Promise<CompareRunResult
             httpStatus: null,
             consoleErrors: [],
             loadTimeMs: 0,
-            error: r.error.message,
+            error: boundedError,
           },
           diff: null,
           baselineExists: false,

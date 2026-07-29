@@ -4,6 +4,26 @@ import path from 'node:path';
 import { CaptureArtifact, CapturerOptions, ViewportSpec } from './types.js';
 
 /**
+ * Reduce browser/runtime failures to a small, operator-useful vocabulary.
+ *
+ * Playwright error messages include the navigated URL and a call log. URLs
+ * may contain signed preview query strings, so raw messages must never enter
+ * reports, receipts, or user-facing reasons.
+ */
+export function sanitizeCaptureError(value: unknown): string {
+  const raw = value instanceof Error ? value.message : String(value);
+  const firstLine = raw.split(/\r?\n/, 1)[0]?.trim() ?? '';
+  if (firstLine === 'navigation_timeout' || firstLine === 'capture_failed') return firstLine;
+  const diagnosticPrefix = firstLine.replace(/\s+at\s+(?:https?|file):\/\/.*$/i, '');
+  const networkCode = diagnosticPrefix.match(
+    /^(?:page\.goto:\s*)?net::(ERR_[A-Z0-9_]{1,64})$/,
+  );
+  if (networkCode) return `net::${networkCode[1]}`;
+  if (/\b(?:timeout|timed out)\b/i.test(diagnosticPrefix)) return 'navigation_timeout';
+  return 'capture_failed';
+}
+
+/**
  * Capturer wraps Playwright with the stable-capture rules from V2 spec §4.4:
  *   - disable CSS animations/transitions
  *   - wait for fonts before capture
@@ -114,7 +134,7 @@ export class Capturer {
         animations: 'disabled',
       });
     } catch (e) {
-      error = e instanceof Error ? e.message : String(e);
+      error = sanitizeCaptureError(e);
     } finally {
       await context.close();
     }

@@ -9,8 +9,11 @@ import type { AddressInfo } from 'node:net';
 // Same pattern as test/deploy-gate.test.ts: replace the browser + pixel-diff
 // engine so orchestration is exercised without a real Chromium instance.
 
-vi.mock('../src/capture.js', () => ({
-  Capturer: class {
+vi.mock('../src/capture.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/capture.js')>();
+  return {
+    ...actual,
+    Capturer: class {
     async start(): Promise<void> {}
     async stop(): Promise<void> {}
     async capture(url: string, vp: { name: string }, outPath: string) {
@@ -38,8 +41,9 @@ vi.mock('../src/capture.js', () => ({
         loadTimeMs: 100,
       };
     }
-  },
-}));
+    },
+  };
+});
 
 vi.mock('../src/diff.js', () => ({
   diffPngs: vi.fn(async () => ({
@@ -149,7 +153,11 @@ describe('buildCompareTargetResult', () => {
 
   it('reports needs_baseline and a reason when the baseline capture failed', () => {
     const t = buildCompareTargetResult({
-      baselineCap: cap({ error: 'net::ERR_FILE_NOT_FOUND', screenshotPath: '/tmp/baseline.png' }),
+      baselineCap: cap({
+        error:
+          'page.goto: net::ERR_FILE_NOT_FOUND at file:///private/preview.html?token=canary\nCall log: details',
+        screenshotPath: '/tmp/baseline.png',
+      }),
       currentCap: cap(),
       currentLabel: 'current.html',
       diff: null,
@@ -157,7 +165,8 @@ describe('buildCompareTargetResult', () => {
       loadTimeWarnMs: 3000,
     });
     expect(t.verdict).toBe('needs_baseline');
-    expect(t.reasons[0]).toMatch(/baseline_capture/);
+    expect(t.reasons[0]).toBe('baseline_capture: net::ERR_FILE_NOT_FOUND');
+    expect(t.reasons.join(' ')).not.toMatch(/file:\/\/|token|canary|Call log/i);
   });
 
   it('surfaces a current-capture error as verdict=error', () => {
@@ -191,14 +200,35 @@ describe('buildCompareTargetResult', () => {
     expect(t.reasons.join(' ')).not.toMatch(/https?:\/\//);
   });
 
-  it('isHealthyBaseline: 2xx/3xx are eligible, non-2xx/3xx and errored captures are not', () => {
+  it('isHealthyBaseline: renderable 2xx/3xx are eligible; no-content and unhealthy captures are not', () => {
     expect(isHealthyBaseline(cap({ httpStatus: 200 }))).toBe(true);
+    expect(isHealthyBaseline(cap({ httpStatus: 203 }))).toBe(true);
     expect(isHealthyBaseline(cap({ httpStatus: 301 }))).toBe(true);
     expect(isHealthyBaseline(cap({ httpStatus: 399 }))).toBe(true);
+    expect(isHealthyBaseline(cap({ httpStatus: 204 }))).toBe(false);
+    expect(isHealthyBaseline(cap({ httpStatus: 205 }))).toBe(false);
+    expect(isHealthyBaseline(cap({ httpStatus: 304 }))).toBe(false);
     expect(isHealthyBaseline(cap({ httpStatus: 404 }))).toBe(false);
     expect(isHealthyBaseline(cap({ httpStatus: 500 }))).toBe(false);
     expect(isHealthyBaseline(cap({ httpStatus: null }))).toBe(false);
     expect(isHealthyBaseline(cap({ httpStatus: 200, error: 'net::ERR_FAILED' }))).toBe(false);
+  });
+
+  it('keeps an unhealthy baseline primary when the current side also fails', () => {
+    const t = buildCompareTargetResult({
+      baselineCap: cap({ httpStatus: 404, screenshotPath: '/tmp/baseline.png' }),
+      currentCap: cap({ httpStatus: 500 }),
+      currentLabel: 'current.html',
+      diff: null,
+      pixelDiffThresholdPct: 5,
+      loadTimeWarnMs: 3000,
+    });
+
+    expect(t.verdict).toBe('needs_baseline');
+    expect(t.pass).toBe(false);
+    expect(t.baseline).toBeNull();
+    expect(t.reasons).toContain('baseline_http_status: HTTP 404');
+    expect(t.reasons).toContain('http_status: HTTP 500');
   });
 });
 
@@ -356,13 +386,25 @@ describe('runCompare — baseline HTTP health gate (loopback fixtures)', () => {
           res.writeHead(200, { 'Content-Type': 'text/html' });
           res.end(identicalHtml);
           return;
+        case '/baseline-300':
+          res.writeHead(300, { 'Content-Type': 'text/html' });
+          res.end(identicalHtml);
+          return;
+        case '/baseline-204':
+          res.writeHead(204);
+          res.end();
+          return;
+        case '/baseline-205':
+          res.writeHead(205);
+          res.end();
+          return;
         case '/baseline-304':
-          // 304 is a bare 3xx status that fetch/browsers do NOT auto-follow
-          // (unlike 301/302/303/307/308), so it reaches isHealthyBaseline
-          // as a genuine 3xx rather than being resolved to the redirect
-          // target's status first.
           res.writeHead(304);
           res.end();
+          return;
+        case '/current-500':
+          res.writeHead(500, { 'Content-Type': 'text/html' });
+          res.end(identicalHtml);
           return;
         default:
           res.writeHead(404);
@@ -402,11 +444,11 @@ describe('runCompare — baseline HTTP health gate (loopback fixtures)', () => {
     expect(result.report.results[0]!.reasons).toContain('baseline_http_status: HTTP 404');
   });
 
-  it('keeps a 3xx baseline eligible and does call the diff seam', async () => {
+  it('keeps a renderable 3xx baseline eligible and does call the diff seam', async () => {
     const { diffPngs } = await import('../src/diff.js');
 
     const result = await runCompare({
-      baseline: `${baseUrl}/baseline-304`,
+      baseline: `${baseUrl}/baseline-300`,
       current: `${baseUrl}/current-200`,
       viewports: [{ name: 'mobile', width: 390, height: 844 }],
       outRoot: workRoot,
@@ -418,6 +460,61 @@ describe('runCompare — baseline HTTP health gate (loopback fixtures)', () => {
 
     expect(diffPngs).toHaveBeenCalledTimes(1);
     expect(result.report.results[0]!.verdict).not.toBe('needs_baseline');
+  });
+
+  it.each([204, 205, 304])(
+    'rejects non-renderable HTTP %i and never calls the diff seam',
+    async (status) => {
+      const { diffPngs } = await import('../src/diff.js');
+
+      const result = await runCompare({
+        baseline: `${baseUrl}/baseline-${status}`,
+        current: `${baseUrl}/current-200`,
+        viewports: [{ name: 'mobile', width: 390, height: 844 }],
+        outRoot: workRoot,
+        threshold: 5,
+        loadTimeWarnMs: 3000,
+        lane,
+        quiet: true,
+      });
+
+      expect(diffPngs).not.toHaveBeenCalled();
+      expect(result.report.pass).toBe(false);
+      expect(result.report.results[0]!.verdict).toBe('needs_baseline');
+      expect(result.report.results[0]!.diff_percentage).toBeNull();
+      expect(result.report.results[0]!.reasons).toContain(
+        `baseline_http_status: HTTP ${status}`,
+      );
+    },
+  );
+
+  it('reports both an unhealthy baseline and current HTTP failure truthfully', async () => {
+    const { diffPngs } = await import('../src/diff.js');
+
+    const result = await runCompare({
+      baseline: `${baseUrl}/baseline-404`,
+      current: `${baseUrl}/current-500`,
+      viewports: [{ name: 'mobile', width: 390, height: 844 }],
+      outRoot: workRoot,
+      threshold: 5,
+      loadTimeWarnMs: 3000,
+      lane,
+      quiet: true,
+    });
+
+    expect(diffPngs).not.toHaveBeenCalled();
+    expect(result.report.pass).toBe(false);
+    expect(result.report.results[0]!.verdict).toBe('needs_baseline');
+    expect(result.report.results[0]!.baseline).toBeNull();
+    expect(result.report.summary.needs_baseline).toBe(1);
+    expect(result.report.assertions.find((a) => a.name === 'baselines_present')?.status).toBe(
+      'fail',
+    );
+    expect(result.report.assertions.find((a) => a.name === 'http_healthy')?.status).toBe(
+      'fail',
+    );
+    expect(result.report.results[0]!.reasons).toContain('baseline_http_status: HTTP 404');
+    expect(result.report.results[0]!.reasons).toContain('http_status: HTTP 500');
   });
 
   it('keeps a healthy 2xx baseline eligible and does call the diff seam', async () => {
