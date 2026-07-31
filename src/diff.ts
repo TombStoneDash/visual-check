@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { PNG } from 'pngjs';
 import pixelmatch from 'pixelmatch';
+import { ChangedRegion } from './types.js';
 
 export interface DiffResult {
   /** 0–100 percentage of pixels that differ */
@@ -13,6 +14,40 @@ export interface DiffResult {
   dimensionMismatch: boolean;
   baselineDimensions: { width: number; height: number };
   actualDimensions: { width: number; height: number };
+  /** Bounding box of the differing pixels, in baseline pixel coordinates.
+   *  Null when there is no diff, or dimensions didn't match (no
+   *  pixel-aligned comparison was possible). */
+  changedRegion?: ChangedRegion | null;
+}
+
+/**
+ * Scan a pixelmatch diff image for its bounding box of "real difference"
+ * pixels (pixelmatch draws these using its exact `diffColor`, default
+ * opaque red). Anti-aliasing-only pixels are drawn in a different color
+ * and are intentionally excluded, matching the `diffPixels` count.
+ */
+function boundingBoxOfDiffPixels(diffImage: PNG, width: number, height: number): ChangedRegion | null {
+  const { data } = diffImage;
+  let minX = width;
+  let minY = height;
+  let maxX = -1;
+  let maxY = -1;
+
+  for (let y = 0; y < height; y++) {
+    const rowOffset = y * width;
+    for (let x = 0; x < width; x++) {
+      const i = (rowOffset + x) * 4;
+      if (data[i] === 255 && data[i + 1] === 0 && data[i + 2] === 0 && data[i + 3] === 255) {
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+    }
+  }
+
+  if (maxX < 0) return null;
+  return { x: minX, y: minY, width: maxX - minX + 1, height: maxY - minY + 1 };
 }
 
 export interface DiffOptions {
@@ -54,6 +89,7 @@ export async function diffPngs(
       dimensionMismatch: true,
       baselineDimensions,
       actualDimensions,
+      changedRegion: null,
     };
   }
 
@@ -72,6 +108,7 @@ export async function diffPngs(
   );
   const totalPixels = width * height;
   const diffPercentage = (diffPixels / totalPixels) * 100;
+  const changedRegion = diffPixels > 0 ? boundingBoxOfDiffPixels(diff, width, height) : null;
 
   await fs.mkdir(path.dirname(diffOutputPath), { recursive: true });
   await fs.writeFile(diffOutputPath, PNG.sync.write(diff));
@@ -84,6 +121,7 @@ export async function diffPngs(
     dimensionMismatch: false,
     baselineDimensions,
     actualDimensions,
+    changedRegion,
   };
 }
 

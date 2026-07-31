@@ -67,6 +67,46 @@ describe('summarize', () => {
       needs_baseline: 1,
     });
   });
+
+  it('counts an underlying error alongside needs_baseline', () => {
+    const target = mkTarget('needs_baseline');
+    target.checks[0] = {
+      name: 'http_status',
+      mode: 'blocking',
+      status: 'error',
+      message: 'navigation error: capture_failed',
+      blocking: true,
+    };
+
+    expect(summarize([target])).toEqual({
+      total: 1,
+      passed: 0,
+      warnings: 0,
+      failed: 0,
+      errors: 1,
+      needs_baseline: 1,
+    });
+  });
+
+  it('counts an underlying warning alongside needs_baseline', () => {
+    const target = mkTarget('needs_baseline');
+    target.checks.push({
+      name: 'console_errors',
+      mode: 'warn',
+      status: 'warn',
+      message: '1 console error(s)',
+      blocking: false,
+    });
+
+    expect(summarize([target])).toEqual({
+      total: 1,
+      passed: 0,
+      warnings: 1,
+      failed: 0,
+      errors: 0,
+      needs_baseline: 1,
+    });
+  });
 });
 
 describe('buildReport.pass', () => {
@@ -120,6 +160,56 @@ describe('buildReport.pass', () => {
       lane,
     });
     expect(r.pass).toBe(false);
+    expect(r.terminal_state).toBe('READY_TO_REVIEW');
+  });
+
+  it('fails capture_completed when needs_baseline overlaps a capture error', () => {
+    const target = mkTarget('needs_baseline');
+    target.checks[0] = {
+      name: 'http_status',
+      mode: 'blocking',
+      status: 'error',
+      message: 'navigation error: capture_failed',
+      blocking: true,
+    };
+    const r = buildReport({
+      urls: ['https://example.com'],
+      viewports: vps,
+      pixelDiffThreshold: 5,
+      loadTimeWarnMs: 3000,
+      results: [target],
+      lane,
+    });
+
+    expect(r.summary.errors).toBe(1);
+    expect(r.summary.needs_baseline).toBe(1);
+    expect(r.assertions.find((a) => a.name === 'capture_completed')?.status).toBe('fail');
+    expect(r.assertions.find((a) => a.name === 'baselines_present')?.status).toBe('fail');
+    expect(r.terminal_state).toBe('BLOCKED_WITH_OWNER');
+  });
+
+  it('fails the warning assertion when needs_baseline overlaps a warning check', () => {
+    const target = mkTarget('needs_baseline');
+    target.checks.push({
+      name: 'console_errors',
+      mode: 'warn',
+      status: 'warn',
+      message: '1 console error(s)',
+      blocking: false,
+    });
+    const r = buildReport({
+      urls: ['https://example.com'],
+      viewports: vps,
+      pixelDiffThreshold: 5,
+      loadTimeWarnMs: 3000,
+      results: [target],
+      lane,
+    });
+
+    expect(r.summary.warnings).toBe(1);
+    expect(r.summary.needs_baseline).toBe(1);
+    expect(r.assertions.find((a) => a.name === 'baselines_present')?.status).toBe('fail');
+    expect(r.assertions.find((a) => a.name === 'nonblocking_checks_clean')?.status).toBe('fail');
     expect(r.terminal_state).toBe('READY_TO_REVIEW');
   });
 

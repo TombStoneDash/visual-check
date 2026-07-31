@@ -93,6 +93,47 @@ describe('renderHtmlReport', () => {
     expect(html).toContain('console_errors');
   });
 
+  it('renders changed-region evidence as a percentage overlay + coordinates', async () => {
+    const out = path.join(tmp, 'report-region.html');
+    const regionTarget: TargetResult = {
+      ...target,
+      viewport: 'mobile',
+      changed_region: { x: 39, y: 84, width: 39, height: 84 },
+    };
+    const report = buildReport({
+      urls: [target.url],
+      viewports: [{ name: 'mobile', width: 390, height: 844 }],
+      pixelDiffThreshold: 5,
+      loadTimeWarnMs: 3000,
+      results: [regionTarget],
+      lane,
+    });
+    await renderHtmlReport(report, out);
+    const html = await fs.readFile(out, 'utf8');
+
+    expect(html).toContain('region-box');
+    // x=39/390=10.00%, y=84/844≈9.95%, width=39/390=10.00%, height=84/844≈9.95%
+    expect(html).toContain('left:10.00%');
+    expect(html).toContain('width:10.00%');
+    expect(html).toContain('changed region: x=39, y=84, 39×84px');
+  });
+
+  it('omits the region overlay when there is no changed region', async () => {
+    const out = path.join(tmp, 'report-no-region.html');
+    const report = buildReport({
+      urls: [target.url],
+      viewports: vps,
+      pixelDiffThreshold: 5,
+      loadTimeWarnMs: 3000,
+      results: [target],
+      lane,
+    });
+    await renderHtmlReport(report, out);
+    const html = await fs.readFile(out, 'utf8');
+    expect(html).not.toContain('class="region-box"');
+    expect(html).not.toContain('changed region:');
+  });
+
   it('handles missing screenshots gracefully (placeholder rendering)', async () => {
     const out = path.join(tmp, 'report-missing.html');
     const noImgTarget: TargetResult = {

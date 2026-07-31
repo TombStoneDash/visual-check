@@ -57,9 +57,17 @@ describe('checkHttpStatus', () => {
   });
 
   it('errors when navigation failed', () => {
-    const r = checkHttpStatus(cap({ error: 'net::ERR_NAME_NOT_RESOLVED', httpStatus: null }));
+    const r = checkHttpStatus(
+      cap({
+        error:
+          'page.goto: net::ERR_NAME_NOT_RESOLVED at https://preview.invalid/?token=canary\nCall log: details',
+        httpStatus: null,
+      }),
+    );
     expect(r.status).toBe('error');
     expect(r.blocking).toBe(true);
+    expect(r.message).toBe('navigation error: name_resolution_failed');
+    expect(r.message).not.toMatch(/https?:|token|canary|Call log/i);
   });
 
   it('fails when no HTTP response arrived', () => {
@@ -104,15 +112,23 @@ describe('checkConsoleErrors', () => {
     const r = checkConsoleErrors(cap({ consoleErrors: ['ReferenceError: foo'] }));
     expect(r.status).toBe('warn');
     expect(r.blocking).toBe(false);
+    expect(r.message).toBe('1 console error event(s): console_error=1');
   });
-  it('truncates long error lists in the message', () => {
-    const errs = Array.from({ length: 10 }, (_, i) => `err${i}`);
-    const r = checkConsoleErrors(cap({ consoleErrors: errs }));
-    expect(r.message).toMatch(/10 console error/);
-    // Should end with a "..." truncation marker rather than listing all 10
-    expect(r.message).toMatch(/\.\.\./);
-    // And should not include the later error indices verbatim
-    expect(r.message).not.toContain('err9');
+  it('collapses raw page and request detail to bounded category counts', () => {
+    const r = checkConsoleErrors(
+      cap({
+        consoleErrors: [
+          'net::ERR_ATTACKER_FAKE https://attacker.invalid/?token=CONSOLE_QUERY_CANARY',
+          'request_failed:image',
+          'request_failed:image',
+          'page_error',
+        ],
+      }),
+    );
+    expect(r.message).toBe(
+      '4 console error event(s): console_error=1, page_error=1, request_failed:image=2',
+    );
+    expect(r.message).not.toMatch(/https?:|token=|QUERY_CANARY|ERR_ATTACKER_FAKE/i);
   });
 });
 
@@ -254,6 +270,30 @@ describe('buildTargetResult — integration', () => {
     });
     expect(t.verdict).toBe('warn');
     expect(t.pass).toBe(true);
+  });
+
+  it('threads the diff changed_region through to the target result', () => {
+    const t = buildTargetResult({
+      cap: cap(),
+      diff: diff({ diffPercentage: 8, changedRegion: { x: 10, y: 20, width: 100, height: 50 } }),
+      baselineExists: true,
+      baselinePath: '/tmp/baseline.png',
+      pixelDiffThresholdPct: 5,
+      loadTimeWarnMs: 3000,
+    });
+    expect(t.changed_region).toEqual({ x: 10, y: 20, width: 100, height: 50 });
+  });
+
+  it('sets changed_region to null when there is no baseline', () => {
+    const t = buildTargetResult({
+      cap: cap(),
+      diff: null,
+      baselineExists: false,
+      baselinePath: '/tmp/baseline.png',
+      pixelDiffThresholdPct: 5,
+      loadTimeWarnMs: 3000,
+    });
+    expect(t.changed_region).toBeNull();
   });
 
   it('surfaces capture errors as verdict=error', () => {

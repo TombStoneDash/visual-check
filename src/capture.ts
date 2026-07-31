@@ -3,6 +3,110 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { CaptureArtifact, CapturerOptions, ViewportSpec } from './types.js';
 
+export const CAPTURE_ERROR_CATEGORIES = [
+  'navigation_aborted',
+  'redirect_loop',
+  'resource_not_found',
+  'name_resolution_failed',
+  'network_unavailable',
+  'tls_failed',
+  'navigation_timeout',
+  'capture_failed',
+] as const;
+
+export type CaptureErrorCategory = (typeof CAPTURE_ERROR_CATEGORIES)[number];
+
+const CAPTURE_ERROR_CATEGORY_SET = new Set<string>(CAPTURE_ERROR_CATEGORIES);
+
+const CHROMIUM_ERROR_CATEGORIES = new Map<string, CaptureErrorCategory>([
+  ['net::ERR_ABORTED', 'navigation_aborted'],
+  ['net::ERR_TOO_MANY_REDIRECTS', 'redirect_loop'],
+  ['net::ERR_FILE_NOT_FOUND', 'resource_not_found'],
+  ['net::ERR_NAME_NOT_RESOLVED', 'name_resolution_failed'],
+  ['net::ERR_CONNECTION_REFUSED', 'network_unavailable'],
+  ['net::ERR_CONNECTION_RESET', 'network_unavailable'],
+  ['net::ERR_CONNECTION_CLOSED', 'network_unavailable'],
+  ['net::ERR_INTERNET_DISCONNECTED', 'network_unavailable'],
+  ['net::ERR_ADDRESS_UNREACHABLE', 'network_unavailable'],
+  ['net::ERR_CERT_AUTHORITY_INVALID', 'tls_failed'],
+  ['net::ERR_CERT_COMMON_NAME_INVALID', 'tls_failed'],
+  ['net::ERR_CERT_DATE_INVALID', 'tls_failed'],
+  ['net::ERR_SSL_PROTOCOL_ERROR', 'tls_failed'],
+  ['net::ERR_FAILED', 'capture_failed'],
+]);
+
+/**
+ * Return only primitive diagnostic text from the narrow trusted cases we
+ * understand. Unknown values are intentionally not coerced: user-controlled
+ * objects can throw from proxy traps, Error.message getters, or coercion
+ * hooks, and their text must not cross the report boundary.
+ */
+function safeDiagnosticText(value: unknown): string | null {
+  if (typeof value === 'string') return value;
+
+  try {
+    if (!(value instanceof Error)) return null;
+  } catch {
+    return null;
+  }
+
+  try {
+    return typeof value.message === 'string' ? value.message : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Reduce browser/runtime failures to a small, operator-useful vocabulary.
+ *
+ * Playwright error messages include the navigated URL and a call log. URLs
+ * may contain signed preview query strings, so raw messages must never enter
+ * reports, receipts, or user-facing reasons.
+ */
+export function sanitizeCaptureError(value: unknown): CaptureErrorCategory {
+  try {
+    const raw = safeDiagnosticText(value);
+    if (raw === null) return 'capture_failed';
+
+    const firstLine = raw.split(/\r?\n/, 1)[0]?.trim() ?? '';
+    if (CAPTURE_ERROR_CATEGORY_SET.has(firstLine)) return firstLine as CaptureErrorCategory;
+    const diagnosticPrefix = firstLine.replace(/\s+at\s+(?:https?|file):\/\/.*$/i, '');
+    const chromiumDiagnostic = diagnosticPrefix.replace(/^page\.goto:\s*/i, '');
+    const trustedCategory = CHROMIUM_ERROR_CATEGORIES.get(chromiumDiagnostic);
+    if (trustedCategory) return trustedCategory;
+    if (/\b(?:timeout|timed out)\b/i.test(diagnosticPrefix)) return 'navigation_timeout';
+  } catch {
+    // The public boundary must be total even for hostile JavaScript values.
+  }
+
+  return 'capture_failed';
+}
+
+export const CONSOLE_DIAGNOSTIC_CATEGORIES = [
+  'console_error',
+  'page_error',
+  'request_failed:script',
+  'request_failed:stylesheet',
+  'request_failed:image',
+  'request_failed:font',
+] as const;
+
+export type ConsoleDiagnosticCategory = (typeof CONSOLE_DIAGNOSTIC_CATEGORIES)[number];
+
+const CONSOLE_DIAGNOSTIC_CATEGORY_SET = new Set<string>(CONSOLE_DIAGNOSTIC_CATEGORIES);
+
+/**
+ * Collapse page-controlled console/request text to a closed category set.
+ * The report retains event counts and resource kind without copying raw page
+ * text, request URLs, query strings, or browser log detail.
+ */
+export function sanitizeConsoleDiagnostic(value: unknown): ConsoleDiagnosticCategory {
+  return typeof value === 'string' && CONSOLE_DIAGNOSTIC_CATEGORY_SET.has(value)
+    ? (value as ConsoleDiagnosticCategory)
+    : 'console_error';
+}
+
 /**
  * Capturer wraps Playwright with the stable-capture rules from V2 spec §4.4:
  *   - disable CSS animations/transitions
@@ -61,16 +165,16 @@ export class Capturer {
     const page = await context.newPage();
 
     page.on('console', (msg) => {
-      if (msg.type() === 'error') consoleErrors.push(msg.text());
+      if (msg.type() === 'error') consoleErrors.push('console_error');
     });
-    page.on('pageerror', (err) => {
-      consoleErrors.push(`PageError: ${err.message}`);
+    page.on('pageerror', () => {
+      consoleErrors.push('page_error');
     });
     page.on('requestfailed', (req) => {
       // Only count resource failures that block rendering
       const rt = req.resourceType();
       if (rt === 'script' || rt === 'stylesheet' || rt === 'image' || rt === 'font') {
-        consoleErrors.push(`RequestFailed(${rt}): ${req.url()}`);
+        consoleErrors.push(sanitizeConsoleDiagnostic(`request_failed:${rt}`));
       }
     });
 
@@ -79,7 +183,9 @@ export class Capturer {
         waitUntil: 'networkidle',
         timeout: this.opts.navigationTimeoutMs,
       });
-      httpStatus = response?.status() ?? null;
+      // file:// navigation never yields an HTTP response — treat a
+      // successful local-page load as "200" rather than "no response".
+      httpStatus = response ? response.status() : url.startsWith('file:') ? 200 : null;
 
       // Stable-capture: disable animations, hide caret
       await page.addStyleTag({
@@ -112,7 +218,7 @@ export class Capturer {
         animations: 'disabled',
       });
     } catch (e) {
-      error = e instanceof Error ? e.message : String(e);
+      error = sanitizeCaptureError(e);
     } finally {
       await context.close();
     }

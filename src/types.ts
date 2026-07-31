@@ -50,6 +50,14 @@ export interface ViewportSpec {
   deviceScaleFactor?: number;
 }
 
+/** Pixel-space bounding box of the differing region between baseline and current. */
+export interface ChangedRegion {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export const DEFAULT_VIEWPORTS: ViewportSpec[] = [
   { name: 'mobile', width: 390, height: 844 },
   { name: 'tablet', width: 768, height: 1024 },
@@ -78,6 +86,7 @@ export interface CaptureArtifact {
   viewport: string;
   screenshotPath: string;
   httpStatus: number | null;
+  /** Closed, bounded diagnostic categories; never raw page or request text. */
   consoleErrors: string[];
   loadTimeMs: number;
   error?: string;
@@ -104,6 +113,8 @@ export interface TargetResult {
   screenshot: string;
   baseline: string | null;
   diff_image: string | null;
+  /** Bounding box of the changed pixels, when a diff was computed. */
+  changed_region?: ChangedRegion | null;
   console_errors: number;
   load_time_ms: number;
   reasons: string[];
@@ -114,7 +125,9 @@ export interface RunSummary {
   total: number;
   passed: number;
   failed: number;
+  /** Targets with any warning check; may overlap another verdict count. */
   warnings: number;
+  /** Targets with any runtime/check error; may overlap another verdict count. */
   errors: number;
   needs_baseline: number;
 }

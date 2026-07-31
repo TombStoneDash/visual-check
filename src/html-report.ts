@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { RunReport, TargetResult, Verdict } from './types.js';
+import { ChangedRegion, DEFAULT_VIEWPORTS, RunReport, TargetResult, Verdict } from './types.js';
 
 /**
  * Single-file HTML report. No server, no dashboard — just a standalone
@@ -46,6 +46,30 @@ function esc(s: string): string {
   );
 }
 
+interface OverlayBox {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * Convert a pixel-space changed_region into a percentage box so it overlays
+ * correctly regardless of how large the browser renders the screenshot.
+ * Only works for the fixed named viewports V1 supports.
+ */
+function regionOverlayBox(region: ChangedRegion | null | undefined, viewportName: string): OverlayBox | null {
+  if (!region) return null;
+  const vp = DEFAULT_VIEWPORTS.find((v) => v.name === viewportName);
+  if (!vp || vp.width <= 0 || vp.height <= 0) return null;
+  return {
+    left: (region.x / vp.width) * 100,
+    top: (region.y / vp.height) * 100,
+    width: (region.width / vp.width) * 100,
+    height: (region.height / vp.height) * 100,
+  };
+}
+
 async function renderTarget(t: TargetResult, idx: number): Promise<string> {
   const v = VERDICT_META[t.verdict];
   const [baselineUri, screenshotUri, diffUri] = await Promise.all([
@@ -53,10 +77,20 @@ async function renderTarget(t: TargetResult, idx: number): Promise<string> {
     toDataUri(t.screenshot),
     toDataUri(t.diff_image),
   ]);
-  const cellImg = (uri: string | null, label: string): string =>
-    uri
-      ? `<figure><figcaption>${label}</figcaption><img src="${uri}" alt="${label}"/></figure>`
-      : `<figure class="missing"><figcaption>${label}</figcaption><div class="placeholder">—</div></figure>`;
+  const regionBox = regionOverlayBox(t.changed_region, t.viewport);
+  const cellImg = (uri: string | null, label: string, overlay?: OverlayBox | null): string => {
+    if (!uri) {
+      return `<figure class="missing"><figcaption>${label}</figcaption><div class="placeholder">—</div></figure>`;
+    }
+    const overlayHtml = overlay
+      ? `<div class="region-box" style="left:${overlay.left.toFixed(2)}%;top:${overlay.top.toFixed(2)}%;width:${overlay.width.toFixed(2)}%;height:${overlay.height.toFixed(2)}%" title="Changed region"></div>`
+      : '';
+    return `<figure><figcaption>${label}</figcaption><div class="img-wrap"><img src="${uri}" alt="${esc(label)}"/>${overlayHtml}</div></figure>`;
+  };
+  const regionMetaHtml =
+    regionBox && t.changed_region
+      ? `<div class="region-meta">changed region: x=${t.changed_region.x}, y=${t.changed_region.y}, ${t.changed_region.width}×${t.changed_region.height}px</div>`
+      : '';
 
   const reasonsHtml = t.reasons.length
     ? `<ul class="reasons">${t.reasons.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>`
@@ -91,9 +125,10 @@ async function renderTarget(t: TargetResult, idx: number): Promise<string> {
       ${reasonsHtml}
       <div class="triptych">
         ${cellImg(baselineUri, 'Baseline')}
-        ${cellImg(screenshotUri, 'Actual')}
-        ${cellImg(diffUri, 'Diff')}
+        ${cellImg(screenshotUri, 'Actual', regionBox)}
+        ${cellImg(diffUri, 'Diff', regionBox)}
       </div>
+      ${regionMetaHtml}
       <details>
         <summary>Per-check detail</summary>
         <table class="checks">
@@ -145,8 +180,11 @@ async function buildHtml(report: RunReport): Promise<string> {
   .triptych { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
   figure { margin: 0; background: #f5f5f5; border: 1px solid #eaeaea; border-radius: 4px; overflow: hidden; }
   figure figcaption { font-size: 11px; font-weight: 600; padding: 6px 10px; color: #666; border-bottom: 1px solid #eaeaea; text-transform: uppercase; letter-spacing: .5px; }
+  figure .img-wrap { position: relative; line-height: 0; }
   figure img { width: 100%; height: auto; display: block; }
   figure .placeholder { height: 120px; display: flex; align-items: center; justify-content: center; color: #999; font-size: 20px; }
+  .region-box { position: absolute; border: 2px solid #ff2fb0; background: rgba(255, 47, 176, .12); pointer-events: none; }
+  .region-meta { margin-top: 10px; font-size: 12px; color: #a3115a; }
   details { margin-top: 12px; }
   details summary { cursor: pointer; font-size: 12px; color: #666; padding: 4px 0; }
   table.checks { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 12px; }
