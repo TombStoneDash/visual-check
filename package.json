@@ -25,7 +25,8 @@
     "postinstall": "playwright install chromium",
     "baseline:portfolio": "npm run build --silent && node dist/cli.js baseline --urls https://trashalert.io,https://actorlab.io,https://lims.bot,https://noui.bot,https://prelithic.build",
     "check:portfolio": "npm run build --silent && node dist/cli.js run --urls https://trashalert.io,https://actorlab.io,https://lims.bot,https://noui.bot,https://prelithic.build --json reports/latest.json",
-    "demo:smoke": "npm run build --silent && node demo/smoke.mjs"
+    "demo:smoke": "npm run build --silent && node demo/smoke.mjs",
+    "site:build": "npm run build --silent && node scripts/build-site.mjs"
   },
   "dependencies": {
     "commander": "^12.1.0",

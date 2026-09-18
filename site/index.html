@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Daisy Presence + Visual Check</title>
+<meta name="description" content="A menu-bar agent presence for macOS and deploy-time visual verification, both live and testable."/>
+<style>
+  :root { --bg:#1a1b26; --bg2:#24283b; --bg3:#2f3549; --fg:#c0caf5; --dim:#9aa5ce; --line:#3b4261; --accent:#7aa2f7; --ok:#9ece6a; --bad:#f7768e; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.55 -apple-system, "SF Pro Text", system-ui, sans-serif; }
+  a { color:var(--accent); }
+  main { max-width:1080px; margin:0 auto; padding:32px 20px 80px; }
+  h1 { font-size:2rem; margin:0 0 6px; letter-spacing:-.01em; }
+  h2 { font-size:1.25rem; margin:48px 0 12px; border-bottom:1px solid var(--line); padding-bottom:8px; }
+  h3 { margin:0; font-size:1rem; }
+  p.lead { color:var(--dim); margin:0 0 18px; max-width:64ch; }
+  kbd { font:12px ui-monospace, SFMono-Regular, Menlo, monospace; background:var(--bg3); border:1px solid var(--line); border-radius:4px; padding:1px 5px; }
+  .btn { display:inline-block; background:var(--accent); color:#1a1b26; font-weight:600; padding:9px 14px; border-radius:6px; text-decoration:none; }
+  .btn.secondary { background:var(--bg3); color:var(--fg); border:1px solid var(--line); }
+  .ctas { display:flex; gap:10px; flex-wrap:wrap; margin:14px 0 6px; }
+  .presence { background:var(--bg2); border:1px solid var(--line); border-radius:10px; overflow:hidden; }
+  .menubar { display:flex; align-items:center; gap:14px; padding:6px 12px; background:#111827; color:#e5e7eb; font-size:13px; border-bottom:1px solid var(--line); }
+  .menubar .apple { font-size:15px; } .menubar .app { font-weight:600; } .menubar .spacer { flex:1; }
+  .menubar-item { background:rgba(255,255,255,.08); border-radius:5px; padding:2px 8px; }
+  .strip { display:flex; flex-wrap:wrap; gap:6px; padding:12px; border-bottom:1px solid var(--line); }
+  .state-btn { background:var(--bg3); color:var(--fg); border:1px solid var(--line); border-left:4px solid var(--c); border-radius:6px; padding:6px 10px; font:13px inherit; cursor:pointer; }
+  .state-btn[aria-pressed="true"] { background:var(--c); color:#1a1b26; border-color:var(--c); }
+  .popovers { padding:16px; }
+  .popover { background:#fff; color:#111; border-radius:10px; box-shadow:0 12px 40px rgba(0,0,0,.45); max-width:420px; margin:0 auto; overflow:hidden; }
+  .popover header { display:flex; align-items:center; gap:10px; padding:12px 14px; border-bottom:1px solid #e5e7eb; border-top:4px solid var(--c); }
+  .popover header .glyph { color:var(--c); font-size:18px; }
+  .popover .flag { margin-left:auto; color:#b45309; font-size:12px; }
+  .popover .rows { padding:6px 14px 10px; }
+  .popover .row { display:grid; grid-template-columns:160px 1fr; gap:8px; font-size:12.5px; padding:4px 0; border-bottom:1px solid #f1f5f9; }
+  .popover .row .k { color:#6b7280; } .popover .row .v { word-break:break-word; }
+  .popover .reason { margin:0; padding:8px 14px 12px; font-size:12px; color:#6b7280; }
+  .note { padding:0 16px 16px; margin:0; font-size:13px; color:var(--dim); }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(300px,1fr)); gap:16px; }
+  .card { background:var(--bg2); border:1px solid var(--line); border-radius:10px; padding:14px; }
+  .card header { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:10px; }
+  .card .meta { color:var(--dim); font-size:12px; margin-left:auto; }
+  .badge { font-weight:700; font-size:12px; padding:2px 8px; border-radius:4px; color:#1a1b26; background:var(--ok); }
+  .verdict-fail .badge { background:var(--bad); }
+  .shots { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:12px; }
+  .shots figure { margin:0; background:var(--bg3); border-radius:6px; overflow:hidden; }
+  .shots img { width:100%; height:auto; display:block; }
+  .shots figcaption { font-size:11px; color:var(--dim); padding:4px 6px; }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  th,td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--dim); font-weight:600; }
+  code { font:13px ui-monospace, SFMono-Regular, Menlo, monospace; background:var(--bg3); padding:1px 5px; border-radius:4px; }
+  footer { margin-top:56px; color:var(--dim); font-size:13px; }
+  @media (max-width:640px){ .shots{grid-template-columns:1fr;} .popover .row{grid-template-columns:1fr;} }
+</style>
+</head>
+<body>
+<main>
+  <h1>Daisy Presence + Visual Check</h1>
+  <p class="lead">Two things an agent should be able to do on your Mac: show you what it is doing right now, and prove a deploy looks right before it says "done". Both are shipped, both are testable from this page.</p>
+  <div class="ctas">
+    <a class="btn" href="https://github.com/TombStoneDash/daisy-personal-assistant/releases/latest/download/DaisyPresence.dmg">Download DaisyPresence.dmg</a>
+    <a class="btn secondary" href="#compare">See Visual Check reports</a>
+    <a class="btn secondary" href="https://github.com/TombStoneDash/daisy-personal-assistant">Presence source</a>
+    <a class="btn secondary" href="https://github.com/TombStoneDash/visual-check">Visual Check source</a>
+  </div>
+  
+
+  <h2>Daisy Presence: the agent in your menu bar</h2>
+  <p class="lead">A native macOS menu-bar app that reads the agent fleet's own state files and shows one of seven states. If the files are missing, stale, or contradict each other it shows OFFLINE rather than guessing. This panel replays a synthetic snapshot of every state.</p>
+  <section id="presence" class="presence" aria-label="Daisy Presence demo panel">
+  <div class="menubar" role="img" aria-label="macOS menu bar with the Daisy Presence item">
+    <span class="apple">&#63743;</span><span class="app">Finder</span>
+    <span class="spacer"></span>
+    <span class="menubar-item" id="menubar-item"><span class="glyph" style="color:#565f89">○</span> Daisy · <span id="menubar-word">offline</span></span>
+    <span class="clock">9:41 AM</span>
+  </div>
+  <div class="strip" role="tablist" aria-label="Presence states"><button class="state-btn" data-index="0" style="--c:#565f89" aria-pressed="true"><kbd>1</kbd> OFFLINE</button><button class="state-btn" data-index="1" style="--c:#7aa2f7" aria-pressed="false"><kbd>2</kbd> IDLE</button><button class="state-btn" data-index="2" style="--c:#bb9af7" aria-pressed="false"><kbd>3</kbd> THINKING</button><button class="state-btn" data-index="3" style="--c:#9ece6a" aria-pressed="false"><kbd>4</kbd> BUILDING</button><button class="state-btn" data-index="4" style="--c:#f7768e" aria-pressed="false"><kbd>5</kbd> BLOCKED</button><button class="state-btn" data-index="5" style="--c:#e0af68" aria-pressed="false"><kbd>6</kbd> WAITING_FOR_HUDSON</button><button class="state-btn" data-index="6" style="--c:#73daca" aria-pressed="false"><kbd>7</kbd> DONE</button></div>
+  <div class="popovers"><article class="popover" data-state="OFFLINE" data-index="0"  aria-label="Daisy Presence OFFLINE">
+  <header style="--c:#565f89">
+    <span class="glyph" aria-hidden="true">○</span>
+    <h3>OFFLINE</h3>
+    <span class="flag">⚠ Stale &amp; unverified</span>
+  </header>
+  <div class="rows">
+    <div class="row"><span class="k">Task</span><span class="v">—</span></div>
+    <div class="row"><span class="k">Project</span><span class="v">—</span></div>
+    <div class="row"><span class="k">Worker / Model / Machine</span><span class="v">— / — / —</span></div>
+    <div class="row"><span class="k">Elapsed</span><span class="v">—</span></div>
+    <div class="row"><span class="k">Last heartbeat</span><span class="v">—</span></div>
+    <div class="row"><span class="k">Latest action</span><span class="v">—</span></div>
+    <div class="row"><span class="k">Blocker</span><span class="v">—</span></div>
+    <div class="row"><span class="k">Next action</span><span class="v">—</span></div>
+    <div class="row"><span class="k">Proof citation</span><span class="v">—</span></div>
+  </div>
+  <p class="reason">demo: no Hermes state files on this machine — fail closed</p>
+</article>
+<article class="popover" data-state="IDLE" data-index="1" hidden aria-label="Daisy Presence IDLE">
+  <header style="--c:#7aa2f7">
+    <span class="glyph" aria-hidden="true">○</span>
+    <h3>IDLE</h3>
+    
+  </header>
+  <div class="rows">
+    <div class="row"><span class="k">Task</span><span class="v">DEMO-TASK-0001</span></div>
+    <div class="row"><span class="k">Project</span><span class="v">DEMO</span></div>
+    <div class="row"><span class="k">Worker / Model / Machine</span><span class="v">daisy-demo-worker / demo-model / demo-machine.local</span></div>
+    <div class="row"><span class="k">Elapsed</span><span class="v">5m 0s</span></div>
+    <div class="row"><span class="k">Last heartbeat</span><span class="v">2027-01-15 08:00:00Z</span></div>
+    <div class="row"><span class="k">Latest action</span><span class="v">daisy-demo-worker reported IDLE</span></div>
+    <div class="row"><span class="k">Blocker</span><span class="v">—</span></div>
+    <div class="row"><span class="k">Next action</span><span class="v">Assign or start a task</span></div>
+    <div class="row"><span class="k">Proof citation</span><span class="v">demo://receipts/idle</span></div>
+  </div>
+  
+</article>
+<article class="popover" data-state="THINKING" data-index="2" hidden aria-label="Daisy Presence THINKING">
+  <header style="--c:#bb9af7">
+    <span class="glyph" aria-hidden="true">◐</span>
+    <h3>THINKING</h3>
+    
+  </header>
+  <div class="rows">
+    <div class="row"><span class="k">Task</span><span class="v">DEMO-TASK-0001</span></div>
+    <div class="row"><span class="k">Project</span><span class="v">DEMO</span></div>
+    <div class="row"><span class="k">Worker / Model / Machine</span><span class="v">daisy-demo-worker / demo-model / demo-machine.local</span></div>
+    <div class="row"><span class="k">Elapsed</span><span class="v">4m 30s</span></div>
+    <div class="row"><span class="k">Last heartbeat</span><span class="v">2027-01-15 08:00:30Z</span></div>
+    <div class="row"><span class="k">Latest action</span><span class="v">daisy-demo-worker reported THINKING</span></div>
+    <div class="row"><span class="k">Blocker</span><span class="v">—</span></div>
+    <div class="row"><span class="k">Next action</span><span class="v">Continue monitoring — worker is active</span></div>
+    <div class="row"><span class="k">Proof citation</span><span class="v">demo://receipts/thinking</span></div>
+  </div>
+  
+</article>
+<article class="popover" data-state="BUILDING" data-index="3" hidden aria-label="Daisy Presence BUILDING">
+  <header style="--c:#9ece6a">
+    <span class="glyph" aria-hidden="true">●</span>
+    <h3>BUILDING</h3>
+    
+  </header>
+  <div class="rows">
+    <div class="row"><span class="k">Task</span><span class="v">DEMO-TASK-0001</span></div>
+    <div class="row"><span class="k">Project</span><span class="v">DEMO</span></div>
+    <div class="row"><span class="k">Worker / Model / Machine</span><span class="v">daisy-demo-worker / demo-model / demo-machine.local</span></div>
+    <div class="row"><span class="k">Elapsed</span><span class="v">3m 30s</span></div>
+    <div class="row"><span class="k">Last heartbeat</span><span class="v">2027-01-15 08:01:30Z</span></div>
+    <div class="row"><span class="k">Latest action</span><span class="v">daisy-demo-worker reported BUILDING</span></div>
+    <div class="row"><span class="k">Blocker</span><span class="v">—</span></div>
+    <div class="row"><span class="k">Next action</span><span class="v">Continue monitoring — worker is active</span></div>
+    <div class="row"><span class="k">Proof citation</span><span class="v">demo://receipts/building</span></div>
+  </div>
+  
+</article>
+<article class="popover" data-state="BLOCKED" data-index="4" hidden aria-label="Daisy Presence BLOCKED">
+  <header style="--c:#f7768e">
+    <span class="glyph" aria-hidden="true">■</span>
+    <h3>BLOCKED</h3>
+    
+  </header>
+  <div class="rows">
+    <div class="row"><span class="k">Task</span><span class="v">DEMO-TASK-0001</span></div>
+    <div class="row"><span class="k">Project</span><span class="v">DEMO</span></div>
+    <div class="row"><span class="k">Worker / Model / Machine</span><span class="v">daisy-demo-worker / demo-model / demo-machine.local</span></div>
+    <div class="row"><span class="k">Elapsed</span><span class="v">2m 0s</span></div>
+    <div class="row"><span class="k">Last heartbeat</span><span class="v">2027-01-15 08:03:00Z</span></div>
+    <div class="row"><span class="k">Latest action</span><span class="v">daisy-demo-worker reported BLOCKED</span></div>
+    <div class="row"><span class="k">Blocker</span><span class="v">demo: required approval not yet granted</span></div>
+    <div class="row"><span class="k">Next action</span><span class="v">Resolve the reported blocker before continuing</span></div>
+    <div class="row"><span class="k">Proof citation</span><span class="v">demo://receipts/blocked</span></div>
+  </div>
+  
+</article>
+<article class="popover" data-state="WAITING_FOR_HUDSON" data-index="5" hidden aria-label="Daisy Presence WAITING_FOR_HUDSON">
+  <header style="--c:#e0af68">
+    <span class="glyph" aria-hidden="true">◔</span>
+    <h3>WAITING_FOR_HUDSON</h3>
+    
+  </header>
+  <div class="rows">
+    <div class="row"><span class="k">Task</span><span class="v">DEMO-TASK-0001</span></div>
+    <div class="row"><span class="k">Project</span><span class="v">DEMO</span></div>
+    <div class="row"><span class="k">Worker / Model / Machine</span><span class="v">daisy-demo-worker / demo-model / demo-machine.local</span></div>
+    <div class="row"><span class="k">Elapsed</span><span class="v">1m 30s</span></div>
+    <div class="row"><span class="k">Last heartbeat</span><span class="v">2027-01-15 08:03:30Z</span></div>
+    <div class="row"><span class="k">Latest action</span><span class="v">daisy-demo-worker reported WAITING_FOR_HUDSON</span></div>
+    <div class="row"><span class="k">Blocker</span><span class="v">—</span></div>
+    <div class="row"><span class="k">Next action</span><span class="v">Wait for Hudson to respond, then resume the task</span></div>
+    <div class="row"><span class="k">Proof citation</span><span class="v">demo://receipts/waiting_for_hudson</span></div>
+  </div>
+  
+</article>
+<article class="popover" data-state="DONE" data-index="6" hidden aria-label="Daisy Presence DONE">
+  <header style="--c:#73daca">
+    <span class="glyph" aria-hidden="true">✓</span>
+    <h3>DONE</h3>
+    
+  </header>
+  <div class="rows">
+    <div class="row"><span class="k">Task</span><span class="v">DEMO-TASK-0001</span></div>
+    <div class="row"><span class="k">Project</span><span class="v">DEMO</span></div>
+    <div class="row"><span class="k">Worker / Model / Machine</span><span class="v">daisy-demo-worker / demo-model / demo-machine.local</span></div>
+    <div class="row"><span class="k">Elapsed</span><span class="v">0s</span></div>
+    <div class="row"><span class="k">Last heartbeat</span><span class="v">2027-01-15 08:05:00Z</span></div>
+    <div class="row"><span class="k">Latest action</span><span class="v">daisy-demo-worker reported DONE</span></div>
+    <div class="row"><span class="k">Blocker</span><span class="v">—</span></div>
+    <div class="row"><span class="k">Next action</span><span class="v">No action needed — task complete</span></div>
+    <div class="row"><span class="k">Proof citation</span><span class="v">demo://receipts/done</span></div>
+  </div>
+  
+</article></div>
+  <p class="note">Synthetic snapshot, same seven states and the same fail-closed rule as the shipped menu-bar app. Press <kbd>1</kbd>–<kbd>7</kbd> or <kbd>Space</kbd> to step. OFFLINE is the only state the app may invent on its own.</p>
+</section>
+
+  <h2 id="compare">Visual Check: proof before "done"</h2>
+  <p class="lead">Two real runs of <code>visual-check compare</code> against the repo's demo fixtures, generated when this page was built. Deterministic: Playwright + pixelmatch + four checks, no model in the verdict path.</p>
+  <div class="grid">
+<article class="card verdict-pass">
+  <header><span class="badge">PASS</span><h3>pass</h3><span class="meta">pixel diff 0% · threshold 5%</span></header>
+  <div class="shots"><figure><img src="shots/pass-desktop-baseline.png" alt="desktop baseline" loading="lazy"/><figcaption>desktop baseline</figcaption></figure><figure><img src="shots/pass-desktop-current.png" alt="desktop current" loading="lazy"/><figcaption>desktop current</figcaption></figure><figure><img src="shots/pass-desktop-diff.png" alt="desktop diff" loading="lazy"/><figcaption>desktop diff</figcaption></figure></div>
+  <a class="btn" href="reports/pass.html">Open full report</a>
+</article>
+<article class="card verdict-fail">
+  <header><span class="badge">FAIL</span><h3>fail</h3><span class="meta">pixel diff 30.541% · threshold 5%</span></header>
+  <div class="shots"><figure><img src="shots/fail-desktop-baseline.png" alt="desktop baseline" loading="lazy"/><figcaption>desktop baseline</figcaption></figure><figure><img src="shots/fail-desktop-current.png" alt="desktop current" loading="lazy"/><figcaption>desktop current</figcaption></figure><figure><img src="shots/fail-desktop-diff.png" alt="desktop diff" loading="lazy"/><figcaption>desktop diff</figcaption></figure></div>
+  <a class="btn" href="reports/fail.html">Open full report</a>
+</article>
+  </div>
+
+  <h2>What is real, what is not</h2>
+  <table>
+    <tr><th>Item</th><th>Status</th></tr>
+    <tr><td>Daisy Presence macOS app, seven states, fail-closed mapping, 100+ self-tests</td><td>Shipped, signed DMG above</td></tr>
+    <tr><td>Presence panel on this page</td><td>Synthetic snapshot rendered from the same state model. Not connected to a live fleet.</td></tr>
+    <tr><td>Visual Check <code>compare</code>, JSON verdict, HTML report, changed-region overlay</td><td>Shipped. Reports above are real output.</td></tr>
+    <tr><td>Supabase storage, Telegram alerts, hosted dashboard</td><td>Not in this demo</td></tr>
+    <tr><td>Daisy Desk (Omarchy-style window and file manager for macOS)</td><td>Spec only: <a href="https://github.com/TombStoneDash/daisy-personal-assistant/blob/main/docs/DAISY_DESK.md">docs/DAISY_DESK.md</a></td></tr>
+  </table>
+
+  <footer>Built 2026-09-18T22:30:43.470Z from <a href="https://github.com/TombStoneDash/visual-check">visual-check</a> and <a href="https://github.com/TombStoneDash/daisy-personal-assistant">daisy-personal-assistant</a>. No analytics, no network calls from this page.</footer>
+</main>
+<script>
+(function(){
+  var pops = Array.prototype.slice.call(document.querySelectorAll('.popover'));
+  var btns = Array.prototype.slice.call(document.querySelectorAll('.state-btn'));
+  var word = document.getElementById('menubar-word');
+  var item = document.getElementById('menubar-item');
+  var moods = [{"glyph":"○","word":"offline","color":"#565f89"},{"glyph":"○","word":"idle","color":"#7aa2f7"},{"glyph":"◐","word":"thinking","color":"#bb9af7"},{"glyph":"●","word":"building","color":"#9ece6a"},{"glyph":"■","word":"blocked","color":"#f7768e"},{"glyph":"◔","word":"waiting","color":"#e0af68"},{"glyph":"✓","word":"done","color":"#73daca"}];
+  var cur = 0;
+  function show(i){
+    cur = (i + pops.length) % pops.length;
+    pops.forEach(function(p, j){ p.hidden = j !== cur; });
+    btns.forEach(function(b, j){ b.setAttribute('aria-pressed', String(j === cur)); });
+    if (word) word.textContent = moods[cur].word;
+    if (item) item.querySelector('.glyph').textContent = moods[cur].glyph, item.querySelector('.glyph').style.color = moods[cur].color;
+  }
+  btns.forEach(function(b){ b.addEventListener('click', function(){ show(Number(b.dataset.index)); }); });
+  document.addEventListener('keydown', function(e){
+    if (e.target && /input|textarea/i.test(e.target.tagName)) return;
+    var n = Number(e.key);
+    if (n >= 1 && n <= pops.length) { show(n - 1); e.preventDefault(); }
+    else if (e.key === ' ' || e.key === 'ArrowRight') { show(cur + 1); e.preventDefault(); }
+    else if (e.key === 'ArrowLeft') { show(cur - 1); e.preventDefault(); }
+  });
+})();
+</script>
+</body>
+</html>

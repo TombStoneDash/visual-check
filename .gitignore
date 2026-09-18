@@ -19,3 +19,6 @@ baselines/
 .DS_Store
 .vscode/
 .idea/
+
+# Hosted demo output is committed on purpose (static deploy, no host build)
+!site/reports/
