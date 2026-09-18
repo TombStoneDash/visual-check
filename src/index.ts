@@ -4,6 +4,7 @@
  * to reuse capture/diff/checks without forking the code.
  */
 export * from './types.js';
+export * from './presence-demo.js';
 export { Capturer, urlToSlug } from './capture.js';
 export { diffPngs, fileExists } from './diff.js';
 export type { DiffResult, DiffOptions } from './diff.js';
