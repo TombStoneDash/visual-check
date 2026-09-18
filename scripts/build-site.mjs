@@ -89,8 +89,8 @@ const html = renderDemoSite({
   compare,
   dmgUrl:
     process.env.DMG_URL ??
-    'https://github.com/TombStoneDash/daisy-personal-assistant/releases/latest/download/DaisyPresence.dmg',
-  dmgSha256: process.env.DMG_SHA256 ?? null,
+    'https://github.com/TombStoneDash/daisy-personal-assistant/releases/download/hackathon-20260918/DaisyPresence-8da75b8.dmg',
+  dmgSha256: process.env.DMG_SHA256 ?? '8e1b4ce6d7ef1db2fda692feed639379a97e4238ee5e5c17eae271c4ef4137db',
   presenceRepoUrl: 'https://github.com/TombStoneDash/daisy-personal-assistant',
   visualCheckRepoUrl: 'https://github.com/TombStoneDash/visual-check',
   daisyDeskSpecUrl: 'https://github.com/TombStoneDash/daisy-personal-assistant/blob/main/docs/DAISY_DESK.md',
