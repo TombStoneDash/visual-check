@@ -89,7 +89,7 @@ const html = renderDemoSite({
   compare,
   dmgUrl:
     process.env.DMG_URL ??
-    'https://github.com/TombStoneDash/daisy-personal-assistant/releases/latest/download/DaisyPresence.dmg',
+    'https://daisy-presence-download.vercel.app/DaisyPresence.dmg',
   dmgSha256: process.env.DMG_SHA256 ?? null,
   presenceRepoUrl: 'https://github.com/TombStoneDash/daisy-personal-assistant',
   visualCheckRepoUrl: 'https://github.com/TombStoneDash/visual-check',
