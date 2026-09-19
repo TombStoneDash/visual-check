@@ -17,12 +17,15 @@ import {
   BaselineLane,
   CaptureArtifact,
   DEFAULT_VIEWPORTS,
+  RunSummary,
   TargetResult,
+  Verdict,
   ViewportSpec,
 } from './types.js';
 import { runDeployGate } from './commands/deploy-gate.js';
 import { runPromote } from './commands/promote.js';
 import { runCompare } from './commands/compare.js';
+import { describeExitCode, exitCodeFor } from './exit-codes.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -64,6 +67,20 @@ function localLane(): BaselineLane {
   return { browser: 'chromium', os, runner };
 }
 
+/**
+ * Reduce a run's per-target verdicts to the single overall verdict the exit
+ * code is derived from. Precedence: error > fail > needs_baseline > warn >
+ * pass — mirrors the private deriveVerdict()/deriveRunVerdict() helpers in
+ * alerts.ts/db.ts.
+ */
+function reportVerdict(summary: RunSummary): Verdict {
+  if (summary.errors > 0) return 'error';
+  if (summary.failed > 0) return 'fail';
+  if (summary.needs_baseline > 0) return 'needs_baseline';
+  if (summary.warnings > 0) return 'warn';
+  return 'pass';
+}
+
 // ---------------------------------------------------------------------------
 // Program
 // ---------------------------------------------------------------------------
@@ -75,7 +92,19 @@ program
   .description(
     "Deploy-time visual verification for AI agents. Don't let your agent say 'done' until it has shown its work.",
   )
-  .version('0.1.0');
+  .version('0.1.0')
+  .addHelpText(
+    'after',
+    `
+Exit codes (run, compare):
+  0    ${describeExitCode(0)}
+  1    ${describeExitCode(1)}
+  2    ${describeExitCode(2)}
+  3    ${describeExitCode(3)}
+
+  Pass --strict-warn to either command to treat a "warn" verdict as a
+  failure (exit 1) instead of a success (exit 0).`,
+  );
 
 // ---------------------------------------------------------------------------
 // baseline
@@ -157,6 +186,11 @@ program
   .option('--no-html', 'Skip HTML report even when --json is set')
   .option('--quiet', 'Suppress per-target console output', false)
   .option('--headed', 'Run Chromium headed (for debugging)', false)
+  .option(
+    '--strict-warn',
+    'Exit 1 (instead of 0) when the overall verdict is warn — see exit code contract below',
+    false,
+  )
   .action(
     async (opts: {
       urls: string;
@@ -170,6 +204,7 @@ program
       receipt?: string;
       quiet?: boolean;
       headed?: boolean;
+      strictWarn?: boolean;
     }) => {
       const urls = parseUrls(opts.urls);
       const viewports = parseViewports(opts.viewports);
@@ -344,8 +379,7 @@ program
         }
       }
 
-      // Exit 0 on pass/warn, 1 on fail/error/needs_baseline
-      process.exit(report.pass ? 0 : 1);
+      process.exit(exitCodeFor(reportVerdict(report.summary), { strictWarn: opts.strictWarn }));
     },
   );
 
@@ -378,6 +412,11 @@ program
   .option('--no-html', 'Skip HTML report')
   .option('--quiet', 'Suppress per-target console output', false)
   .option('--headed', 'Run Chromium headed (for debugging)', false)
+  .option(
+    '--strict-warn',
+    'Exit 1 (instead of 0) when the overall verdict is warn — see exit code contract below',
+    false,
+  )
   .action(
     async (opts: {
       baseline: string;
@@ -392,6 +431,7 @@ program
       receipt?: string;
       quiet?: boolean;
       headed?: boolean;
+      strictWarn?: boolean;
     }) => {
       const viewports = parseViewports(opts.viewports);
       const threshold = parseFloat(opts.threshold);
@@ -424,7 +464,7 @@ program
         receiptOutPath: opts.receipt,
       });
 
-      process.exit(report.pass ? 0 : 1);
+      process.exit(exitCodeFor(reportVerdict(report.summary), { strictWarn: opts.strictWarn }));
     },
   );
 
