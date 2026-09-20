@@ -18,6 +18,79 @@ export interface DiffResult {
    *  Null when there is no diff, or dimensions didn't match (no
    *  pixel-aligned comparison was possible). */
   changedRegion?: ChangedRegion | null;
+  /** actual minus baseline, in pixels. Null/undefined when sizes match. */
+  sizeDelta?: { width: number; height: number } | null;
+}
+
+/** Refuse to allocate a diff canvas larger than this many pixels. */
+const MAX_DIFF_CANVAS_PIXELS = 60_000_000;
+
+/**
+ * Copy `src` onto a `width`x`height` transparent canvas, anchored at the
+ * top-left. Used to pad both images to the same size before diffing when
+ * their dimensions don't match.
+ */
+function padToCanvas(src: PNG, width: number, height: number): PNG {
+  const padded = new PNG({ width, height });
+  PNG.bitblt(src, padded, 0, 0, Math.min(src.width, width), Math.min(src.height, height), 0, 0);
+  return padded;
+}
+
+/**
+ * Build a best-effort diff image for a dimension mismatch: pads both images
+ * onto a shared max(width) x max(height) canvas, runs pixelmatch over the
+ * padded pair, then paints every pixel that only exists in one of the two
+ * original images (the grown/shrunk band) solid magenta so it's obvious
+ * what changed. Returns null (never throws) if the image can't be built.
+ */
+async function writeMismatchDiffImage(
+  baseline: PNG,
+  actual: PNG,
+  diffOutputPath: string,
+  opts: DiffOptions,
+): Promise<string | null> {
+  try {
+    const width = Math.max(baseline.width, actual.width);
+    const height = Math.max(baseline.height, actual.height);
+    if (width * height > MAX_DIFF_CANVAS_PIXELS) return null;
+
+    const paddedBaseline = padToCanvas(baseline, width, height);
+    const paddedActual = padToCanvas(actual, width, height);
+    const diff = new PNG({ width, height });
+    pixelmatch(
+      paddedBaseline.data,
+      paddedActual.data,
+      diff.data,
+      width,
+      height,
+      {
+        threshold: opts.threshold ?? 0.1,
+        includeAA: opts.includeAA ?? false,
+      },
+    );
+
+    for (let y = 0; y < height; y++) {
+      const inBaselineRow = y < baseline.height;
+      const inActualRow = y < actual.height;
+      for (let x = 0; x < width; x++) {
+        const inBaseline = inBaselineRow && x < baseline.width;
+        const inActual = inActualRow && x < actual.width;
+        if (inBaseline !== inActual) {
+          const i = (y * width + x) << 2;
+          diff.data[i] = 255;
+          diff.data[i + 1] = 0;
+          diff.data[i + 2] = 255;
+          diff.data[i + 3] = 255;
+        }
+      }
+    }
+
+    await fs.mkdir(path.dirname(diffOutputPath), { recursive: true });
+    await fs.writeFile(diffOutputPath, PNG.sync.write(diff));
+    return diffOutputPath;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -81,15 +154,20 @@ export async function diffPngs(
   const actualDimensions = { width: actual.width, height: actual.height };
 
   if (baseline.width !== actual.width || baseline.height !== actual.height) {
+    const diffImagePath = await writeMismatchDiffImage(baseline, actual, diffOutputPath, opts);
     return {
       diffPercentage: 100,
       diffPixels: -1,
       totalPixels: baseline.width * baseline.height,
-      diffImagePath: null,
+      diffImagePath,
       dimensionMismatch: true,
       baselineDimensions,
       actualDimensions,
       changedRegion: null,
+      sizeDelta: {
+        width: actual.width - baseline.width,
+        height: actual.height - baseline.height,
+      },
     };
   }
 
