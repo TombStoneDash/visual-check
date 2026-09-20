@@ -25,6 +25,28 @@ export const V1_CHECK_MODES: Record<string, CheckMode> = {
 
 // -- Check 1: Pixel diff -----------------------------------------------------
 
+/**
+ * Format a diff percentage for display. A rounded-to-zero value that is
+ * still a real (>0) difference reads as "<0.001%" instead of "0.000%" so a
+ * failing check never claims there was no difference.
+ */
+export function formatDiffPercentage(pct: number): string {
+  if (pct === 0) return '0%';
+  const rounded = pct.toFixed(3);
+  if (Number(rounded) === 0) return '<0.001%';
+  return `${rounded}%`;
+}
+
+/**
+ * Round a diff percentage for numeric reporting (`metric`, `diff_percentage`),
+ * keeping the unrounded value when rounding would mask a real (>0) difference
+ * as exactly zero.
+ */
+function roundDiffPercentage(pct: number): number {
+  const rounded = Number(pct.toFixed(3));
+  return rounded === 0 && pct > 0 ? pct : rounded;
+}
+
 export function checkPixelDiff(
   diff: DiffResult | null,
   thresholdPct: number,
@@ -49,6 +71,15 @@ export function checkPixelDiff(
       blocking: true,
     };
   }
+  if (!Number.isFinite(thresholdPct) || thresholdPct < 0) {
+    return {
+      name: 'pixel_diff',
+      mode,
+      status: 'error',
+      message: 'invalid pixel diff threshold',
+      blocking: true,
+    };
+  }
   if (diff.dimensionMismatch) {
     return {
       name: 'pixel_diff',
@@ -61,14 +92,19 @@ export function checkPixelDiff(
     };
   }
   const pass = diff.diffPercentage <= thresholdPct;
+  const formatted = formatDiffPercentage(diff.diffPercentage);
+  const countSuffix =
+    !pass && diff.diffPixels >= 0
+      ? ` (${diff.diffPixels.toLocaleString('en-US')} of ${diff.totalPixels.toLocaleString('en-US')} pixels)`
+      : '';
   return {
     name: 'pixel_diff',
     mode,
     status: pass ? 'pass' : 'fail',
     message: pass
-      ? `pixel diff ${diff.diffPercentage.toFixed(3)}% within threshold`
-      : `pixel diff ${diff.diffPercentage.toFixed(3)}% > ${thresholdPct}%`,
-    metric: Number(diff.diffPercentage.toFixed(3)),
+      ? `pixel diff ${formatted} within threshold`
+      : `pixel diff ${formatted} > ${thresholdPct}%${countSuffix}`,
+    metric: roundDiffPercentage(diff.diffPercentage),
     threshold: thresholdPct,
     blocking: !pass,
   };
@@ -253,7 +289,7 @@ export function buildTargetResult(params: {
     verdict,
     pass,
     status: cap.httpStatus,
-    diff_percentage: diff && !diff.dimensionMismatch ? Number(diff.diffPercentage.toFixed(3)) : null,
+    diff_percentage: diff && !diff.dimensionMismatch ? roundDiffPercentage(diff.diffPercentage) : null,
     screenshot: cap.screenshotPath,
     baseline: baselineExists ? baselinePath : null,
     diff_image: diff?.diffImagePath ?? null,
