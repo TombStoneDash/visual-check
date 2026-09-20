@@ -11,9 +11,9 @@
  *      command is silently removed or renamed, this test catches it
  *      before the next release.
  *
- * No browser, no network, no on-disk state — same constraints as the
- * sibling smoke suite, so CI can run it under the existing
- * `npm ci --ignore-scripts` path without Playwright.
+ * Global setup rebuilds dist/ before any test file runs, independently of
+ * CI step order. These smoke tests need no browser or network; browser
+ * contract tests in cli.exit-codes.test.ts always run in CI.
  */
 import { describe, it, expect } from 'vitest';
 import { spawnSync } from 'node:child_process';
@@ -38,12 +38,11 @@ describe('cli module imports', () => {
 });
 
 describe('visual-check --help', () => {
-  // Skip the spawn test if the CLI hasn't been built yet (e.g., local dev
-  // before `npm run build`). CI runs `npm run build` before this suite as
-  // part of the ci.yml flow.
-  const cliReady = existsSync(builtCli);
+  it('dist/cli.js exists after global setup', () => {
+    expect(existsSync(builtCli)).toBe(true);
+  });
 
-  it.skipIf(!cliReady)('exits 0 and lists all documented subcommands', () => {
+  it('exits 0 and lists all documented subcommands', () => {
     const res = spawnSync(process.execPath, [builtCli, '--help'], {
       encoding: 'utf-8',
       timeout: 5_000,
@@ -56,7 +55,7 @@ describe('visual-check --help', () => {
     expect(out).toContain('visual-check');
   });
 
-  it.skipIf(!cliReady)('exits 0 on --version and reports a semver-ish string', () => {
+  it('exits 0 on --version and reports a semver-ish string', () => {
     const res = spawnSync(process.execPath, [builtCli, '--version'], {
       encoding: 'utf-8',
       timeout: 5_000,

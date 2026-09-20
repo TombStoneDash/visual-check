@@ -8,20 +8,22 @@
  *
  * Exit code contract under test: pass/warn -> 0, fail -> 1,
  * needs_baseline -> 2, error -> 3, and --strict-warn remapping warn -> 1.
+ * Global setup always rebuilds dist/ before test files run. Browser tests
+ * always run in CI; locally they skip only when Chromium cannot launch.
+ * Help tests always run and need no browser.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { spawnSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
-import { existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { browserReady, mustRunBrowserTests } from './helpers/browser-ready.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, '..');
 const builtCli = path.join(repoRoot, 'dist', 'cli.js');
-const cliReady = existsSync(builtCli);
 
 let workRoot: string;
 let warnFixturePath: string;
@@ -75,7 +77,7 @@ async function readReport(jsonPath: string) {
   return JSON.parse(await fs.readFile(jsonPath, 'utf8'));
 }
 
-describe.skipIf(!cliReady)('visual-check compare — exit code contract', () => {
+describe.skipIf(!browserReady && !mustRunBrowserTests)('visual-check compare — exit code contract', () => {
   it(
     'pass: identical baseline/current exits 0',
     async () => {
@@ -194,7 +196,7 @@ describe.skipIf(!cliReady)('visual-check compare — exit code contract', () => 
   );
 });
 
-describe.skipIf(!cliReady)('visual-check --help', () => {
+describe('visual-check --help', () => {
   it('documents --strict-warn and the exit code contract', () => {
     const res = spawnSync(process.execPath, [builtCli, '--help'], {
       encoding: 'utf-8',
