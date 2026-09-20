@@ -1,6 +1,7 @@
 import { chromium, Browser } from 'playwright';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { CaptureArtifact, CapturerOptions, ViewportSpec } from './types.js';
 
 export const CAPTURE_ERROR_CATEGORIES = [
@@ -238,8 +239,17 @@ export class Capturer {
 /**
  * Convert a URL into a stable filesystem slug used for per-target paths.
  * https://trashalert.io/pricing → "trashalert-io_pricing"
+ *
+ * A non-default port appends "-p<port>" to the host so distinct ports never
+ * collide. A non-empty query string appends "_q" plus an 8-char SHA-256
+ * prefix of the query so distinct queries never collide (the hash fragment
+ * is still ignored). Anything outside [A-Za-z0-9._%-] is then replaced with
+ * "_", and results over 120 chars are truncated to 100 chars plus an 8-char
+ * SHA-256 prefix of the whole URL to stay under filesystem limits. The
+ * result is never empty and never a bare "/", "\" or "..".
  */
 export function urlToSlug(url: string): string {
+  let slug: string;
   try {
     const u = new URL(url);
     const host = u.hostname.replace(/\./g, '-');
@@ -247,8 +257,23 @@ export function urlToSlug(url: string): string {
       u.pathname === '/' || u.pathname === ''
         ? ''
         : u.pathname.replace(/\/$/, '').replace(/\//g, '_');
-    return `${host}${pathSeg}`;
+    const portSeg = u.port ? `-p${u.port}` : '';
+    const querySeg =
+      u.search && u.search !== '?'
+        ? `_q${createHash('sha256').update(u.search).digest('hex').slice(0, 8)}`
+        : '';
+    slug = `${host}${portSeg}${pathSeg}${querySeg}`;
   } catch {
-    return url.replace(/[^a-z0-9]/gi, '_');
+    slug = url.replace(/[^a-z0-9]/gi, '_');
   }
+
+  slug = slug.replace(/[^A-Za-z0-9._%-]/g, '_');
+
+  if (slug.length > 120) {
+    const hash = createHash('sha256').update(url).digest('hex').slice(0, 8);
+    slug = `${slug.slice(0, 100)}_h${hash}`;
+  }
+
+  if (!slug || slug === '.' || slug === '..') return 'target';
+  return slug;
 }
