@@ -1,5 +1,6 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import { paletteCss } from './report-theme.js';
 import { ChangedRegion, DEFAULT_VIEWPORTS, RunReport, TargetResult, Verdict } from './types.js';
 
 /**
@@ -150,51 +151,42 @@ async function buildHtml(report: RunReport): Promise<string> {
 <meta charset="utf-8"/>
 <title>Visual Check — ${esc(report.run_id)}</title>
 <style>
+  ${paletteCss()}
   :root { color-scheme: light dark; }
   * { box-sizing: border-box; }
-  body { font: 14px/1.4 -apple-system, system-ui, sans-serif; margin: 0; padding: 0; background: #fafafa; color: #111; }
-  @media (prefers-color-scheme: dark) {
-    body { background: #111; color: #eee; }
-    .target { background: #1a1a1a; border-color: #2a2a2a; }
-    figure { background: #0f0f0f; border-color: #2a2a2a; }
-    thead { background: #1f1f1f; }
-    tr { border-color: #2a2a2a; }
-    details summary { color: #aaa; }
-  }
-  header.top { padding: 24px 32px; background: #fff; border-bottom: 1px solid #eaeaea; position: sticky; top: 0; z-index: 10; }
-  @media (prefers-color-scheme: dark) { header.top { background: #191919; border-color: #2a2a2a; } }
+  body { font: 14px/1.4 -apple-system, system-ui, sans-serif; margin: 0; padding: 0; background: var(--vc-page-bg); color: var(--vc-text); }
+  header.top { padding: 24px 32px; background: var(--vc-header-bg); border-bottom: 1px solid var(--vc-border); position: sticky; top: 0; z-index: 10; }
   header.top h1 { margin: 0 0 8px; font-size: 20px; font-weight: 600; }
-  header.top .sub { color: #666; font-size: 12px; }
+  header.top .sub { color: var(--vc-muted-text); font-size: 12px; }
   header.top .counts { margin-top: 12px; display: flex; gap: 16px; flex-wrap: wrap; font-size: 13px; }
-  header.top .counts span { padding: 4px 10px; border-radius: 999px; background: #f1f1f1; }
-  @media (prefers-color-scheme: dark) { header.top .counts span { background: #252525; } }
+  header.top .counts span { padding: 4px 10px; border-radius: 999px; background: var(--vc-table-head-bg); }
   .overall { display: inline-block; padding: 4px 12px; border-radius: 4px; font-weight: 600; font-size: 13px; margin-left: 8px; }
   main { padding: 24px 32px; max-width: 1400px; margin: 0 auto; }
-  .target { margin: 0 0 24px; padding: 20px; background: #fff; border: 1px solid #eaeaea; border-radius: 8px; }
+  .target { margin: 0 0 24px; padding: 20px; background: var(--vc-card-bg); border: 1px solid var(--vc-border); border-radius: 8px; }
   .target header { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
   .target h2 { margin: 0; font-size: 15px; font-weight: 500; word-break: break-all; flex: 1 1 auto; }
   .badge { font-size: 11px; font-weight: 700; letter-spacing: .5px; padding: 3px 10px; border-radius: 4px; }
-  .meta { width: 100%; display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: #666; }
+  .meta { width: 100%; display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: var(--vc-muted-text); }
   .meta b { color: inherit; }
-  .reasons { margin: 8px 0 16px; padding-left: 20px; color: #c22; font-size: 13px; }
+  .reasons { margin: 8px 0 16px; padding-left: 20px; color: var(--vc-reason-text); font-size: 13px; }
   .triptych { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
-  figure { margin: 0; background: #f5f5f5; border: 1px solid #eaeaea; border-radius: 4px; overflow: hidden; }
-  figure figcaption { font-size: 11px; font-weight: 600; padding: 6px 10px; color: #666; border-bottom: 1px solid #eaeaea; text-transform: uppercase; letter-spacing: .5px; }
+  figure { margin: 0; background: var(--vc-table-head-bg); border: 1px solid var(--vc-border); border-radius: 4px; overflow: hidden; }
+  figure figcaption { font-size: 11px; font-weight: 600; padding: 6px 10px; color: var(--vc-muted-text); border-bottom: 1px solid var(--vc-border); text-transform: uppercase; letter-spacing: .5px; }
   figure .img-wrap { position: relative; line-height: 0; }
   figure img { width: 100%; height: auto; display: block; }
-  figure .placeholder { height: 120px; display: flex; align-items: center; justify-content: center; color: #999; font-size: 20px; }
+  figure .placeholder { height: 120px; display: flex; align-items: center; justify-content: center; color: var(--vc-muted-text); font-size: 20px; }
   .region-box { position: absolute; border: 2px solid #ff2fb0; background: rgba(255, 47, 176, .12); pointer-events: none; }
-  .region-meta { margin-top: 10px; font-size: 12px; color: #a3115a; }
+  .region-meta { margin-top: 10px; font-size: 12px; color: var(--vc-region-text); }
   details { margin-top: 12px; }
-  details summary { cursor: pointer; font-size: 12px; color: #666; padding: 4px 0; }
+  details summary { cursor: pointer; font-size: 12px; color: var(--vc-muted-text); padding: 4px 0; }
   table.checks { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 12px; }
-  table.checks th, table.checks td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #eee; }
-  table.checks thead { background: #fafafa; }
-  tr.check-pass td:nth-child(2) { color: #0a6; font-weight: 600; }
-  tr.check-warn td:nth-child(2) { color: #b45; font-weight: 600; }
-  tr.check-fail td:nth-child(2) { color: #c22; font-weight: 600; }
-  tr.check-err  td:nth-child(2) { color: #333; font-weight: 600; }
-  tr.check-skip td { color: #999; }
+  table.checks th, table.checks td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--vc-border); }
+  table.checks thead { background: var(--vc-table-head-bg); }
+  tr.check-pass td:nth-child(2) { color: var(--vc-check-pass); font-weight: 600; }
+  tr.check-warn td:nth-child(2) { color: var(--vc-check-warn); font-weight: 600; }
+  tr.check-fail td:nth-child(2) { color: var(--vc-check-fail); font-weight: 600; }
+  tr.check-err  td:nth-child(2) { color: var(--vc-check-error); font-weight: 600; }
+  tr.check-skip td { color: var(--vc-check-skip); }
   code { font: 12px/1 ui-monospace, Menlo, Consolas, monospace; }
 </style>
 </head>
