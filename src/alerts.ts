@@ -25,6 +25,11 @@ const EMOJI: Record<string, string> = {
 /** Max failing-target lines to inline in the Telegram message body. The full
  *  list always lives in the HTML report; the message just teases the first N. */
 const MAX_TELEGRAM_FAILING = 10;
+export const TELEGRAM_MAX_CHARS = 4000;
+
+function shorten(input: string, maxChars: number): string {
+  return input.length > maxChars ? input.slice(0, maxChars - 1) + '…' : input;
+}
 
 export function buildTelegramMessage(run: RunReport, signedReportUrl: string): string {
   const verdict = deriveVerdict(run);
@@ -33,7 +38,7 @@ export function buildTelegramMessage(run: RunReport, signedReportUrl: string): s
   const s = run.summary;
   const header = `${emoji} <b>Visual Check ${verdict.toUpperCase()}</b> — <code>${escapeHtml(project)}</code>`;
   const meta: string[] = [];
-  if (run.deploymentUrl) meta.push(`Deploy: ${escapeHtml(run.deploymentUrl)}`);
+  if (run.deploymentUrl) meta.push(`Deploy: ${escapeHtml(shorten(run.deploymentUrl, 120))}`);
   if (run.branch) meta.push(`Branch: <code>${escapeHtml(run.branch)}</code>`);
   if (run.commitSha) meta.push(`Commit: <code>${escapeHtml(run.commitSha.slice(0, 7))}</code>`);
   const summaryLine =
@@ -45,19 +50,31 @@ export function buildTelegramMessage(run: RunReport, signedReportUrl: string): s
   const cap = Math.min(failingTargets.length, MAX_TELEGRAM_FAILING);
   const failing = failingTargets.slice(0, cap).map((r) => {
     const reason = r.reasons[0] ?? r.verdict;
-    return `• <code>${escapeHtml(r.url)}</code> @ ${escapeHtml(r.viewport)} — ${escapeHtml(reason)}`;
+    return `• <code>${escapeHtml(shorten(r.url, 120))}</code> @ ${escapeHtml(r.viewport)} — ${escapeHtml(shorten(reason, 160))}`;
   });
-  const overflowCount = failingTargets.length - cap;
-  const overflowLine =
-    overflowCount > 0 ? `…and ${overflowCount} more in the HTML report` : null;
-  const failingBlock =
-    failing.length > 0
-      ? ['', '<b>Failing:</b>', ...failing, ...(overflowLine ? [overflowLine] : [])].join('\n')
-      : '';
+  const link = `\n\n<a href="${escapeHtml(signedReportUrl).replace(/"/g, '&quot;')}">Open HTML report</a>`;
+  const render = (): string => {
+    const overflowCount = failingTargets.length - failing.length;
+    const overflowLine =
+      overflowCount > 0 ? `…and ${overflowCount} more in the HTML report` : null;
+    const failingBlock =
+      failingTargets.length > 0
+        ? ['', '<b>Failing:</b>', ...failing, ...(overflowLine ? [overflowLine] : [])].join('\n')
+        : '';
+    return [header, ...meta, '', summaryLine, failingBlock].filter(Boolean).join('\n') + link;
+  };
 
-  const link = `\n\n<a href="${signedReportUrl}">Open HTML report</a>`;
-
-  return [header, ...meta, '', summaryLine, failingBlock].filter(Boolean).join('\n') + link;
+  let message = render();
+  while (message.length > TELEGRAM_MAX_CHARS && failing.length > 0) {
+    failing.pop();
+    message = render();
+  }
+  // An oversized fixed section cannot fit without corrupting the report link
+  // or discarding required context. Never return an over-budget payload.
+  if (message.length > TELEGRAM_MAX_CHARS) {
+    throw new Error('Telegram header, metadata, summary and report link exceed the character budget');
+  }
+  return message;
 }
 
 export async function sendTelegramAlert(
