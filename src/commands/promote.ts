@@ -9,6 +9,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { urlToSlug } from '../capture.js';
+import { baselineStorageKey } from '../baseline-key.js';
 import * as storage from '../storage.js';
 import * as db from '../db.js';
 import { BaselineLane } from '../types.js';
@@ -95,7 +96,7 @@ export async function runPromote(opts: PromoteOptions): Promise<PromoteResult> {
       const local = path.join(workDir, `${urlToSlug(r.url)}-${r.viewport}.png`);
       try {
         await downloadScreenshotTo(r.screenshot_path, local);
-        const baselineKey = `${run.project_id}/${urlToSlug(r.url)}/${r.viewport}.png`;
+        const baselineKey = baselineStorageKey(run.project_id, r.url, r.viewport, lane);
         await storage.uploadArtifact(local, 'visual-check-baselines', baselineKey);
         await db.upsertBaseline(
           run.project_id,
