@@ -152,7 +152,7 @@ export class Capturer {
     const consoleErrors: string[] = [];
     let httpStatus: number | null = null;
     let error: string | undefined;
-    const start = Date.now();
+    let loadTimeMs: number;
 
     const context = await this.browser.newContext({
       viewport: { width: viewport.width, height: viewport.height },
@@ -179,11 +179,13 @@ export class Capturer {
       }
     });
 
+    const start = Date.now();
     try {
       const response = await page.goto(url, {
         waitUntil: 'networkidle',
         timeout: this.opts.navigationTimeoutMs,
       });
+      loadTimeMs = Date.now() - start;
       // file:// navigation never yields an HTTP response — treat a
       // successful local-page load as "200" rather than "no response".
       httpStatus = response ? response.status() : url.startsWith('file:') ? 200 : null;
@@ -219,6 +221,7 @@ export class Capturer {
         animations: 'disabled',
       });
     } catch (e) {
+      loadTimeMs = Date.now() - start;
       error = sanitizeCaptureError(e);
     } finally {
       await context.close();
@@ -230,7 +233,7 @@ export class Capturer {
       screenshotPath: outputPath,
       httpStatus,
       consoleErrors,
-      loadTimeMs: Date.now() - start,
+      loadTimeMs,
       error,
     };
   }
