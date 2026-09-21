@@ -9,6 +9,7 @@
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import { Capturer, sanitizeCaptureError, urlToSlug } from '../capture.js';
+import { baselineStorageKey } from '../baseline-key.js';
 import { diffPngs, fileExists } from '../diff.js';
 import { buildTargetResult } from '../checks.js';
 import { buildReport, formatSummary, formatTargetLine, writeJsonReport } from '../report.js';
@@ -234,7 +235,7 @@ export async function runDeployGate(opts: DeployGateOptions): Promise<DeployGate
       }
     }
     if (t.hasBaseline) {
-      storageKeys.baselines[k] = `${opts.projectId}/${urlToSlug(t.url)}/${t.vp.name}.png`;
+      storageKeys.baselines[k] = baselineStorageKey(opts.projectId, t.url, t.vp.name, opts.lane);
     }
   }
 

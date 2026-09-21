@@ -70,6 +70,16 @@ describe('runPromote', () => {
     expect(result.skipped[0]!.reason).toContain('fail');
     expect(db.upsertBaseline).toHaveBeenCalledTimes(2);
     expect(storage.uploadArtifact).toHaveBeenCalledTimes(2);
+    for (const viewport of ['mobile', 'desktop']) {
+      const key = `trashalert/windows-lenovo-local/x-io/${viewport}.png`;
+      expect(storage.uploadArtifact).toHaveBeenCalledWith(
+        expect.any(String), 'visual-check-baselines', key,
+      );
+      expect(db.upsertBaseline).toHaveBeenCalledWith(
+        'trashalert', 'https://x.io', viewport, lane, key, 'vc_ok', undefined,
+      );
+      expect(result.promoted).toContainEqual({ url: 'https://x.io', viewport, storageKey: key });
+    }
   });
 
   it('throws when the run id is unknown', async () => {
