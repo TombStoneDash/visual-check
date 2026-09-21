@@ -46,9 +46,15 @@ function countCheckFailures(
 export function buildAssertions(results: TargetResult[], summary: RunSummary): RunAssertion[] {
   const captureErrors = summary.errors;
   const httpFailures = countCheckFailures(results, 'http_status', ['fail', 'error']);
-  const visualFailures = countCheckFailures(results, 'pixel_diff', ['fail', 'error']);
+  // A pixel_diff check is 'fail' when a diff was measured and exceeded the
+  // threshold, and 'error' when no diff could be measured at all (unreadable
+  // capture, bad threshold, etc). Those are different situations that need
+  // different messages and owners — see visual_diff_within_threshold below.
+  const visualExceeded = countCheckFailures(results, 'pixel_diff', ['fail']);
+  const visualNotComputed = countCheckFailures(results, 'pixel_diff', ['error']);
+  const visualBlocking = visualExceeded + visualNotComputed;
   const unspecifiedBlockingFailures =
-    summary.failed > 0 && httpFailures === 0 && visualFailures === 0
+    summary.failed > 0 && httpFailures === 0 && visualBlocking === 0
       ? summary.failed
       : 0;
 
@@ -84,12 +90,18 @@ export function buildAssertions(results: TargetResult[], summary: RunSummary): R
     },
     {
       name: 'visual_diff_within_threshold',
-      status: visualFailures === 0 ? 'pass' : 'fail',
+      status: visualBlocking === 0 ? 'pass' : 'fail',
       message:
-        visualFailures === 0
+        visualBlocking === 0
           ? 'All visual diffs were within threshold.'
-          : `${visualFailures} target(s) exceeded the visual diff threshold.`,
-      ...(visualFailures === 0 ? {} : { owner: 'review-owner' as const }),
+          : visualNotComputed === 0
+            ? `${visualExceeded} target(s) exceeded the visual diff threshold.`
+            : visualExceeded === 0
+              ? `${visualNotComputed} target(s) could not be compared (the visual diff could not be computed) - re-run the capture.`
+              : `${visualExceeded} target(s) exceeded the visual diff threshold; ${visualNotComputed} more could not be compared (the visual diff could not be computed).`,
+      ...(visualBlocking === 0
+        ? {}
+        : { owner: visualExceeded > 0 ? ('review-owner' as const) : ('runtime' as const) }),
     },
     {
       name: 'nonblocking_checks_clean',
