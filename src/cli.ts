@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { Command } from 'commander';
+import { Command, CommanderError } from 'commander';
 import path from 'node:path';
 import { Capturer, sanitizeCaptureError, urlToSlug } from './capture.js';
 import { diffPngs, fileExists } from './diff.js';
@@ -16,7 +16,6 @@ import { runPool } from './pool.js';
 import {
   BaselineLane,
   CaptureArtifact,
-  DEFAULT_VIEWPORTS,
   RunSummary,
   TargetResult,
   Verdict,
@@ -25,34 +24,12 @@ import {
 import { runDeployGate } from './commands/deploy-gate.js';
 import { runPromote } from './commands/promote.js';
 import { runCompare } from './commands/compare.js';
-import { describeExitCode, exitCodeFor } from './exit-codes.js';
+import { describeExitCode, exitCodeFor, USAGE_OR_FATAL_EXIT_CODE } from './exit-codes.js';
+import { parseUrls, parseViewports, parseNumberOption } from './cli-args.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function parseUrls(raw: string): string[] {
-  return raw
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .map((s) => (/^https?:\/\//.test(s) ? s : `https://${s}`));
-}
-
-function parseViewports(raw: string | undefined): ViewportSpec[] {
-  if (!raw) return DEFAULT_VIEWPORTS;
-  const wanted = raw
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean);
-  const picked = DEFAULT_VIEWPORTS.filter((v) => wanted.includes(v.name));
-  if (picked.length === 0) {
-    throw new Error(
-      `No matching viewports. Valid names: ${DEFAULT_VIEWPORTS.map((v) => v.name).join(', ')}`,
-    );
-  }
-  return picked;
-}
 
 function localLane(): BaselineLane {
   const platform = process.platform;
@@ -74,6 +51,7 @@ function localLane(): BaselineLane {
  * alerts.ts/db.ts.
  */
 function reportVerdict(summary: RunSummary): Verdict {
+  if (summary.total === 0) return 'error';
   if (summary.errors > 0) return 'error';
   if (summary.failed > 0) return 'fail';
   if (summary.needs_baseline > 0) return 'needs_baseline';
@@ -86,6 +64,7 @@ function reportVerdict(summary: RunSummary): Verdict {
 // ---------------------------------------------------------------------------
 
 const program = new Command();
+program.exitOverride();
 
 program
   .name('visual-check')
@@ -101,6 +80,7 @@ Exit codes (run, compare):
   1    ${describeExitCode(1)}
   2    ${describeExitCode(2)}
   3    ${describeExitCode(3)}
+  Usage errors and crashes exit 3 for every command.
 
   Pass --strict-warn to either command to treat a "warn" verdict as a
   failure (exit 1) instead of a success (exit 0).`,
@@ -214,19 +194,13 @@ program
       const timeStamp = new Date().toISOString().replace(/[:.]/g, '-');
       const captureRoot = path.join(root, 'captures', dateStr, timeStamp);
       const diffRoot = path.join(root, 'diffs', dateStr, timeStamp);
-      const threshold = parseFloat(opts.threshold);
-      const loadTimeWarnMs = parseInt(opts.loadTimeWarn, 10);
-      const concurrency = parseInt(opts.concurrency, 10);
-
-      if (Number.isNaN(threshold) || threshold < 0 || threshold > 100) {
-        throw new Error(`Invalid --threshold: ${opts.threshold}`);
-      }
-      if (Number.isNaN(loadTimeWarnMs) || loadTimeWarnMs <= 0) {
-        throw new Error(`Invalid --load-time-warn: ${opts.loadTimeWarn}`);
-      }
-      if (Number.isNaN(concurrency) || concurrency < 1 || concurrency > 16) {
-        throw new Error(`Invalid --concurrency: ${opts.concurrency} (expected 1..16)`);
-      }
+      const threshold = parseNumberOption('--threshold', opts.threshold, { min: 0, max: 100 });
+      const loadTimeWarnMs = parseNumberOption('--load-time-warn', opts.loadTimeWarn, {
+        min: 0, exclusiveMin: true, integer: true,
+      });
+      const concurrency = parseNumberOption('--concurrency', opts.concurrency, {
+        min: 1, max: 16, integer: true,
+      });
 
       if (!opts.quiet) {
         console.log(
@@ -434,19 +408,13 @@ program
       strictWarn?: boolean;
     }) => {
       const viewports = parseViewports(opts.viewports);
-      const threshold = parseFloat(opts.threshold);
-      const loadTimeWarnMs = parseInt(opts.loadTimeWarn, 10);
-      const concurrency = parseInt(opts.concurrency, 10);
-
-      if (Number.isNaN(threshold) || threshold < 0 || threshold > 100) {
-        throw new Error(`Invalid --threshold: ${opts.threshold}`);
-      }
-      if (Number.isNaN(loadTimeWarnMs) || loadTimeWarnMs <= 0) {
-        throw new Error(`Invalid --load-time-warn: ${opts.loadTimeWarn}`);
-      }
-      if (Number.isNaN(concurrency) || concurrency < 1 || concurrency > 16) {
-        throw new Error(`Invalid --concurrency: ${opts.concurrency} (expected 1..16)`);
-      }
+      const threshold = parseNumberOption('--threshold', opts.threshold, { min: 0, max: 100 });
+      const loadTimeWarnMs = parseNumberOption('--load-time-warn', opts.loadTimeWarn, {
+        min: 0, exclusiveMin: true, integer: true,
+      });
+      const concurrency = parseNumberOption('--concurrency', opts.concurrency, {
+        min: 1, max: 16, integer: true,
+      });
 
       const { report } = await runCompare({
         baseline: opts.baseline,
@@ -516,19 +484,17 @@ program
     }) => {
       const urls = parseUrls(opts.urls);
       const viewports = parseViewports(opts.viewports);
-      const threshold = parseFloat(opts.threshold);
-      const loadTimeWarnMs = parseInt(opts.loadTimeWarn, 10);
-      const concurrency = parseInt(opts.concurrency, 10);
-      const ttl = parseInt(opts.signedUrlTtl, 10);
-      if (Number.isNaN(threshold) || threshold < 0 || threshold > 100) {
-        throw new Error(`Invalid --threshold: ${opts.threshold}`);
-      }
-      if (Number.isNaN(loadTimeWarnMs) || loadTimeWarnMs <= 0) {
-        throw new Error(`Invalid --load-time-warn: ${opts.loadTimeWarn}`);
-      }
-      if (Number.isNaN(concurrency) || concurrency < 1 || concurrency > 16) {
-        throw new Error(`Invalid --concurrency: ${opts.concurrency} (expected 1..16)`);
-      }
+      const threshold = parseNumberOption('--threshold', opts.threshold, { min: 0, max: 100 });
+      const loadTimeWarnMs = parseNumberOption('--load-time-warn', opts.loadTimeWarn, {
+        min: 0, exclusiveMin: true, integer: true,
+      });
+      const concurrency = parseNumberOption('--concurrency', opts.concurrency, {
+        min: 1, max: 16, integer: true,
+      });
+
+      const ttl = parseNumberOption('--signed-url-ttl', opts.signedUrlTtl, {
+        min: 0, exclusiveMin: true, integer: true,
+      });
 
       const { report } = await runDeployGate({
         urls,
@@ -622,6 +588,9 @@ program
 // ---------------------------------------------------------------------------
 
 program.parseAsync(process.argv).catch((err) => {
+  if (err instanceof CommanderError) {
+    process.exit(err.exitCode === 0 ? 0 : USAGE_OR_FATAL_EXIT_CODE);
+  }
   console.error(`[visual-check] fatal: ${err instanceof Error ? err.message : String(err)}`);
-  process.exit(2);
+  process.exit(USAGE_OR_FATAL_EXIT_CODE);
 });
