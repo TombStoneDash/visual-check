@@ -19,20 +19,33 @@ export type CaptureErrorCategory = (typeof CAPTURE_ERROR_CATEGORIES)[number];
 
 const CAPTURE_ERROR_CATEGORY_SET = new Set<string>(CAPTURE_ERROR_CATEGORIES);
 
+// Entries must be exact Chromium error codes (never patterns/substrings), so
+// page-controlled text can never influence which category is chosen.
 const CHROMIUM_ERROR_CATEGORIES = new Map<string, CaptureErrorCategory>([
   ['net::ERR_ABORTED', 'navigation_aborted'],
   ['net::ERR_TOO_MANY_REDIRECTS', 'redirect_loop'],
   ['net::ERR_FILE_NOT_FOUND', 'resource_not_found'],
   ['net::ERR_NAME_NOT_RESOLVED', 'name_resolution_failed'],
+  ['net::ERR_NAME_RESOLUTION_FAILED', 'name_resolution_failed'],
   ['net::ERR_CONNECTION_REFUSED', 'network_unavailable'],
   ['net::ERR_CONNECTION_RESET', 'network_unavailable'],
   ['net::ERR_CONNECTION_CLOSED', 'network_unavailable'],
+  ['net::ERR_CONNECTION_ABORTED', 'network_unavailable'],
+  ['net::ERR_CONNECTION_FAILED', 'network_unavailable'],
   ['net::ERR_INTERNET_DISCONNECTED', 'network_unavailable'],
   ['net::ERR_ADDRESS_UNREACHABLE', 'network_unavailable'],
+  ['net::ERR_NETWORK_CHANGED', 'network_unavailable'],
+  ['net::ERR_PROXY_CONNECTION_FAILED', 'network_unavailable'],
   ['net::ERR_CERT_AUTHORITY_INVALID', 'tls_failed'],
   ['net::ERR_CERT_COMMON_NAME_INVALID', 'tls_failed'],
   ['net::ERR_CERT_DATE_INVALID', 'tls_failed'],
+  ['net::ERR_CERT_REVOKED', 'tls_failed'],
+  ['net::ERR_CERT_INVALID', 'tls_failed'],
   ['net::ERR_SSL_PROTOCOL_ERROR', 'tls_failed'],
+  ['net::ERR_SSL_VERSION_OR_CIPHER_MISMATCH', 'tls_failed'],
+  ['net::ERR_BAD_SSL_CLIENT_AUTH_CERT', 'tls_failed'],
+  ['net::ERR_TIMED_OUT', 'navigation_timeout'],
+  ['net::ERR_CONNECTION_TIMED_OUT', 'navigation_timeout'],
   ['net::ERR_FAILED', 'capture_failed'],
 ]);
 
