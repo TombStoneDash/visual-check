@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { RunReceipt, RunReport } from './types.js';
+import { RunAssertionName, RunReceipt, RunReport } from './types.js';
 
 export function receiptPathFor(jsonPath: string): string {
   const parsed = path.parse(jsonPath);
@@ -11,10 +11,41 @@ export function nextActionFor(report: RunReport): string {
   if (report.terminal_state === 'SHIPPED_PROVEN') {
     return 'Deploy gate passed with proof artifacts; safe to continue.';
   }
-  if (report.terminal_state === 'READY_TO_REVIEW') {
-    return 'Open the HTML report, review warnings, missing baselines, or visual diffs, then promote or fix.';
+
+  const { assertions, summary } = report;
+  const isProblem = (name: RunAssertionName) =>
+    assertions.some((assertion) => assertion.name === name && assertion.status !== 'pass');
+
+  const problems: string[] = [];
+  if (isProblem('capture_completed') && summary.errors > 0) {
+    problems.push(`${summary.errors} target(s) failed to capture - re-run the capture.`);
   }
-  return 'Assign the failed runtime or HTTP assertion owner before retrying.';
+  if (isProblem('http_healthy') && summary.failed > 0) {
+    problems.push(`${summary.failed} target(s) need site-owner investigation.`);
+  }
+  if (isProblem('baselines_present') && summary.needs_baseline > 0) {
+    problems.push(
+      `${summary.needs_baseline} target(s) have no approved baseline - review and promote.`,
+    );
+  }
+  if (isProblem('visual_diff_within_threshold') && summary.failed > 0) {
+    problems.push(
+      `${summary.failed} target(s) changed visually - open the HTML report and approve or fix.`,
+    );
+  }
+  if (isProblem('nonblocking_checks_clean') && summary.warnings > 0) {
+    problems.push(`${summary.warnings} target(s) have warnings to review.`);
+  }
+
+  if (problems.length === 0) {
+    return 'Open the HTML report and review the run.';
+  }
+
+  const limited = problems.slice(0, 3);
+  if (problems.length > 3) {
+    limited.push('And more in the report.');
+  }
+  return limited.join(' ');
 }
 
 export function buildReceipt(params: {
