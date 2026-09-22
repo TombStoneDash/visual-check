@@ -51,6 +51,7 @@ export function checkPixelDiff(
   diff: DiffResult | null,
   thresholdPct: number,
   baselineExists: boolean,
+  captureFailed = false,
 ): CheckResult {
   const mode = V1_CHECK_MODES.pixel_diff;
   if (!baselineExists) {
@@ -59,6 +60,15 @@ export function checkPixelDiff(
       mode,
       status: 'skip',
       message: 'no baseline — target needs baseline capture',
+      blocking: false,
+    };
+  }
+  if (captureFailed) {
+    return {
+      name: 'pixel_diff',
+      mode,
+      status: 'skip',
+      message: 'skipped due to capture error',
       blocking: false,
     };
   }
@@ -275,7 +285,7 @@ export function buildTargetResult(params: {
 
   const checks: CheckResult[] = [
     checkHttpStatus(cap),
-    checkPixelDiff(diff, pixelDiffThresholdPct, baselineExists),
+    checkPixelDiff(diff, pixelDiffThresholdPct, baselineExists, Boolean(cap.error)),
     checkConsoleErrors(cap),
     checkLoadTime(cap, loadTimeWarnMs),
   ];
