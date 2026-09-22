@@ -1,5 +1,7 @@
 import { Verdict } from './types.js';
 
+export const USAGE_OR_FATAL_EXIT_CODE = 3;
+
 /**
  * Process exit code contract for a verdict. Consumed by the CLI (wiring is a
  * later task) and by any agent that needs to script against `visual-check`
@@ -40,7 +42,7 @@ const EXIT_CODE_DESCRIPTIONS: Record<number, string> = {
   0: 'success: verdict was pass, or warn without --strict-warn',
   1: 'failure: verdict was fail, or warn with --strict-warn enabled',
   2: 'needs_baseline: no baseline exists yet to compare against',
-  3: 'error: verdict was error, or the verdict string was unrecognized',
+  3: 'error: verdict was error, the command was used incorrectly, or the CLI crashed',
 };
 
 const DEFAULT_DESCRIPTION = 'unrecognized exit code';

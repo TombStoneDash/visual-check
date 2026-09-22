@@ -61,12 +61,14 @@ export function buildAssertions(results: TargetResult[], summary: RunSummary): R
   return [
     {
       name: 'capture_completed',
-      status: captureErrors === 0 ? 'pass' : 'fail',
+      status: summary.total > 0 && captureErrors === 0 ? 'pass' : 'fail',
       message:
-        captureErrors === 0
-          ? 'All targets produced a capture result.'
-          : `${captureErrors} target(s) ended with capture/runtime errors.`,
-      ...(captureErrors === 0 ? {} : { owner: 'runtime' as const }),
+        summary.total === 0
+          ? 'No targets were checked.'
+          : captureErrors === 0
+            ? 'All targets produced a capture result.'
+            : `${captureErrors} target(s) ended with capture/runtime errors.`,
+      ...(summary.total > 0 && captureErrors === 0 ? {} : { owner: 'runtime' as const }),
     },
     {
       name: 'http_healthy',
@@ -156,7 +158,8 @@ export function buildReport(params: {
     summary,
     assertions,
     terminal_state: terminalState,
-    pass: summary.failed === 0 && summary.errors === 0 && summary.needs_baseline === 0,
+    pass:
+      summary.total > 0 && summary.failed === 0 && summary.errors === 0 && summary.needs_baseline === 0,
   };
 }
 

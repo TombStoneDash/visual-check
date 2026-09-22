@@ -28,7 +28,7 @@ or just run:
 npm install && npm run build && npm run demo:smoke
 ```
 
-**Currently dogfooded on TrashAlert** — deploy gate runs on every push, with Telegram alerts on failure and the HTML diff report attached. 113 unit tests pass on every CI run.
+**Currently dogfooded on TrashAlert** — deploy gate runs on every push, with Telegram alerts on failure and the HTML diff report attached. The test suite runs on every CI push and pull request.
 
 ## Who it's for
 
@@ -54,7 +54,8 @@ node dist/cli.js baseline --urls https://mysite.com
 node dist/cli.js run --urls https://mysite.com --json report.json
 
 # 3. Exit code tells your agent what to do
-#    0 = pass/warn (continue), 1 = fail/error/needs_baseline (stop)
+#    0 = pass/warn; 1 = fail, or warn with --strict-warn
+#    2 = needs_baseline; 3 = error, wrong usage or crash
 
 # The report.json has all the details. The report.html is human-readable.
 ```
@@ -124,7 +125,8 @@ node dist/cli.js run \
   --threshold 5 \
   --json reports/latest.json
 
-# Exit code is 0 (pass/warn) or 1 (fail/error/needs_baseline), so it slots into bash pipelines.
+# Exit codes: 0 = pass/warn; 1 = fail, or warn with --strict-warn;
+# 2 = needs_baseline; 3 = error, wrong usage or crash.
 ```
 
 Writes captured screenshots, diffs, and a JSON + HTML report. All file paths are relative to `--out` (default: current directory).
@@ -148,8 +150,9 @@ node dist/cli.js compare \
 
 No credentials, no pre-seeded baseline store — `compare` captures both sides
 in the same run, diffs them, and writes the same JSON/HTML/receipt artifacts
-as `run`. Exit code is `0` (pass/warn) or `1` (fail/error/needs_baseline),
-same as every other command. See [`HACKATHON_DEMO.md`](./HACKATHON_DEMO.md)
+as `run`. Exit codes: `0` (pass/warn), `1` (fail, or warn with `--strict-warn`),
+`2` (needs_baseline), `3` (error, wrong usage or crash).
+`deploy-gate` still exits `0`/`1` for report pass/fail; usage errors and crashes exit `3` for every command. See [`HACKATHON_DEMO.md`](./HACKATHON_DEMO.md)
 for a full walkthrough.
 
 ## Screenshots
@@ -246,18 +249,22 @@ Terminal states:
 Exit code logic:
 
 ```bash
-if jq -e '.pass' report.json > /dev/null; then
-  exit 0  # Proceed with deploy
-else
-  exit 1  # Stop and investigate
-fi
+code=0
+node dist/cli.js run --urls https://mysite.com --json report.json || code=$?
+case "$code" in
+  0) echo "Pass/warn: proceed" ;;
+  1) echo "Fail (or warn with --strict-warn): stop and review" ;;
+  2) echo "Needs baseline: capture or approve a baseline" ;;
+  3) echo "Error, wrong usage or crash: investigate and retry" ;;
+esac
+exit "$code"
 ```
 
 ## GitHub Actions
 
 Two workflows ship in `.github/workflows/`:
 
-**`ci.yml`** — runs typecheck + unit tests + build on every push/PR (no browser, ~30s).
+**`ci.yml`** — installs Chromium and runs typecheck, tests (including real-browser capture tests), and build on every push/PR.
 
 **`visual-check.yml`** — on pull requests, waits for the Vercel preview deploy, runs Visual Check, uploads artifacts, and posts a PR comment with the summary (updates on re-runs).
 
@@ -381,7 +388,7 @@ node dist/cli.js run \
 | `--quiet` | off | Suppress per-target output lines. |
 | `--headed` | off | Show browser. |
 
-Exit code: `0` (pass/warn), `1` (fail/error/needs_baseline), `2` (fatal CLI error).
+Exit codes: `0` (pass/warn), `1` (fail, or warn with `--strict-warn`), `2` (needs_baseline), `3` (error, wrong usage or crash).
 
 #### `compare`
 
@@ -424,7 +431,7 @@ The HTML report
 includes a changed-region overlay — a bounding box drawn over the current
 and diff screenshots — showing exactly where pixels differ.
 
-Exit code: `0` (pass/warn), `1` (fail/error/needs_baseline), `2` (fatal CLI error).
+Exit codes: `0` (pass/warn), `1` (fail, or warn with `--strict-warn`), `2` (needs_baseline), `3` (error, wrong usage or crash).
 
 #### `promote` (Phase 2)
 
@@ -440,7 +447,7 @@ Sets the results from `run-id` as the new approved baselines.
 ### Development
 
 ```bash
-npm test          # unit tests (no browser required, ~10s)
+npm test          # test suite (includes real-browser tests)
 npm run typecheck # strict TypeScript
 npm run build     # compile to dist/
 npm run dev       # tsx entrypoint for iteration
