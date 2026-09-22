@@ -105,7 +105,7 @@ export function buildAssertions(results: TargetResult[], summary: RunSummary): R
     },
     {
       name: 'nonblocking_checks_clean',
-      status: summary.warnings === 0 ? 'pass' : 'fail',
+      status: summary.warnings === 0 ? 'pass' : 'warn',
       message:
         summary.warnings === 0
           ? 'No warning-level checks fired.'
@@ -123,7 +123,9 @@ export function terminalStateForAssertions(assertions: RunAssertion[]): Terminal
   );
   if (blocked) return 'BLOCKED_WITH_OWNER';
 
-  const needsReview = assertions.some((assertion) => assertion.status === 'fail');
+  const needsReview = assertions.some(
+    (assertion) => assertion.status === 'fail' || assertion.status === 'warn',
+  );
   if (needsReview) return 'READY_TO_REVIEW';
 
   return 'SHIPPED_PROVEN';

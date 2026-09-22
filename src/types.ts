@@ -38,7 +38,7 @@ export type RunAssertionName =
 
 export interface RunAssertion {
   name: RunAssertionName;
-  status: 'pass' | 'fail';
+  status: 'pass' | 'warn' | 'fail';
   message: string;
   owner?: 'runtime' | 'site-owner' | 'review-owner';
 }
