@@ -105,7 +105,9 @@ export function buildAssertions(results: TargetResult[], summary: RunSummary): R
     },
     {
       name: 'nonblocking_checks_clean',
-      status: summary.warnings === 0 ? 'pass' : 'warn',
+      // A warning on its own is reviewable, not a failure; without a usable
+      // baseline it cannot be confirmed, so that overlap still fails.
+      status: summary.warnings === 0 ? 'pass' : summary.needs_baseline > 0 ? 'fail' : 'warn',
       message:
         summary.warnings === 0
           ? 'No warning-level checks fired.'
