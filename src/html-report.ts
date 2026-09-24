@@ -141,6 +141,30 @@ async function renderTarget(t: TargetResult, idx: number): Promise<string> {
   `;
 }
 
+function renderAssertions(assertions: RunReport['assertions']): string {
+  const rows = assertions
+    .map((a) => {
+      const cls =
+        a.status === 'pass' ? 'check-pass' : a.status === 'warn' ? 'check-warn' : 'check-fail';
+      return `<tr class="${cls}">
+        <td><code>${esc(a.name)}</code></td>
+        <td>${esc(a.status)}</td>
+        <td>${esc(a.message)}</td>
+        <td>${a.owner ? esc(a.owner) : '—'}</td>
+      </tr>`;
+    })
+    .join('');
+  return `
+    <section class="assertions">
+      <h2>Assertions</h2>
+      <table class="checks">
+        <thead><tr><th>assertion</th><th>status</th><th>message</th><th>owner</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </section>
+  `;
+}
+
 async function buildHtml(report: RunReport): Promise<string> {
   const overall = VERDICT_META[report.pass ? 'pass' : 'fail'];
   const targets = await Promise.all(report.results.map((r, i) => renderTarget(r, i)));
@@ -210,6 +234,7 @@ async function buildHtml(report: RunReport): Promise<string> {
     </div>
   </header>
   <main>
+    ${renderAssertions(report.assertions)}
     ${targets.join('\n')}
   </main>
 </body>
