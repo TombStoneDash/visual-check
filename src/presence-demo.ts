@@ -162,11 +162,17 @@ function fmtTime(isoString: string | null): string | null {
   return isoString.replace('T', ' ').replace(/\.\d+Z$/, 'Z');
 }
 
-function elapsedLabel(s: PresenceSnapshot): string | null {
+/**
+ * Elapsed time between this snapshot's `referenceEventAt` and the given
+ * reference "now" ISO string. When `referenceEventAtIso` is null or fails to
+ * parse, falls back to the snapshot's own `referenceEventAt` so a card
+ * rendered on its own reads `0s` instead of borrowing an unrelated clock.
+ */
+export function elapsedLabel(s: PresenceSnapshot, referenceEventAtIso: string | null): string | null {
   if (!s.referenceEventAt) return null;
   const ref = Date.parse(s.referenceEventAt);
-  const last = DEMO_SNAPSHOTS[DEMO_SNAPSHOTS.length - 1]?.referenceEventAt;
-  const now = last ? Date.parse(last) : ref;
+  const parsedNow = referenceEventAtIso ? Date.parse(referenceEventAtIso) : NaN;
+  const now = Number.isNaN(parsedNow) ? ref : parsedNow;
   const secs = Math.max(0, Math.round((now - ref) / 1000));
   const m = Math.floor(secs / 60);
   const r = secs % 60;
@@ -174,7 +180,7 @@ function elapsedLabel(s: PresenceSnapshot): string | null {
 }
 
 /** Render one popover card, the same rows PopoverContentView.swift shows. */
-export function renderPopover(s: PresenceSnapshot, index: number): string {
+export function renderPopover(s: PresenceSnapshot, index: number, referenceEventAtIso: string | null = null): string {
   const flag =
     s.isStale && s.isUnverified
       ? 'Stale & unverified'
@@ -194,7 +200,7 @@ export function renderPopover(s: PresenceSnapshot, index: number): string {
     ${row('Task', s.task)}
     ${row('Project', s.project)}
     ${row('Worker / Model / Machine', [s.worker, s.model, s.machine].map((x) => x ?? '—').join(' / '))}
-    ${row('Elapsed', elapsedLabel(s))}
+    ${row('Elapsed', elapsedLabel(s, referenceEventAtIso))}
     ${row('Last heartbeat', fmtTime(s.lastHeartbeat))}
     ${row('Latest action', s.latestAction)}
     ${row('Blocker', s.blocker)}
@@ -209,6 +215,15 @@ export function renderPopover(s: PresenceSnapshot, index: number): string {
 export function renderPresencePanel(snapshots: readonly PresenceSnapshot[] = DEMO_SNAPSHOTS): string {
   const first = snapshots[0];
   const firstMood = first ? miniMood(first) : { glyph: '○', word: 'offline' };
+  let referenceNow: string | null = null;
+  let referenceNowMs = -Infinity;
+  for (const s of snapshots) {
+    if (!s.referenceEventAt) continue;
+    const ms = Date.parse(s.referenceEventAt);
+    if (Number.isNaN(ms) || ms <= referenceNowMs) continue;
+    referenceNow = s.referenceEventAt;
+    referenceNowMs = ms;
+  }
   const strip = snapshots
     .map(
       (s, i) =>
@@ -223,7 +238,7 @@ export function renderPresencePanel(snapshots: readonly PresenceSnapshot[] = DEM
     <span class="clock">9:41 AM</span>
   </div>
   <div class="strip" role="tablist" aria-label="Presence states">${strip}</div>
-  <div class="popovers">${snapshots.map(renderPopover).join('\n')}</div>
+  <div class="popovers">${snapshots.map((s, i) => renderPopover(s, i, referenceNow)).join('\n')}</div>
   <p class="note">Synthetic snapshot, same seven states and the same fail-closed rule as the shipped menu-bar app. Press <kbd>1</kbd>–<kbd>${snapshots.length}</kbd> or <kbd>Space</kbd> to step. OFFLINE is the only state the app may invent on its own.</p>
 </section>`;
 }
