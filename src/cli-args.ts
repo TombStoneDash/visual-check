@@ -5,9 +5,26 @@ export class UsageError extends Error {
 }
 
 export function parseUrls(raw: string): string[] {
-  const urls = raw.split(',').map((s) => s.trim()).filter(Boolean)
-    .map((s) => (/^https?:\/\//.test(s) ? s : `https://${s}`));
-  if (urls.length === 0) throw new UsageError('No URLs were given.');
+  const entries = raw.split(',').map((s) => s.trim()).filter(Boolean);
+  if (entries.length === 0) throw new UsageError('No URLs were given.');
+  const seen = new Set<string>();
+  const urls: string[] = [];
+  for (const entry of entries) {
+    const normalized = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(entry) ? entry : `https://${entry}`;
+    let parsed: URL;
+    try {
+      parsed = new URL(normalized);
+    } catch {
+      throw new UsageError(`Invalid --urls entry: ${entry} (expected an http:// or https:// address)`);
+    }
+    if ((parsed.protocol !== 'http:' && parsed.protocol !== 'https:') || parsed.hostname === '') {
+      throw new UsageError(`Invalid --urls entry: ${entry} (expected an http:// or https:// address)`);
+    }
+    const key = parsed.href;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    urls.push(normalized);
+  }
   return urls;
 }
 
