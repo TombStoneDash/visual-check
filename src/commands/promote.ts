@@ -60,6 +60,12 @@ export async function runPromote(opts: PromoteOptions): Promise<PromoteResult> {
   const log = opts.log ?? ((l) => console.log(l));
   log(`[visual-check] promote: run=${opts.runId}`);
 
+  if (opts.targets === 'selected' && (opts.selected ?? []).length === 0) {
+    throw new Error(
+      '--targets=selected needs at least one --select "<url>@<viewport>" pair; nothing was selected.',
+    );
+  }
+
   const runData = await db.getRun(opts.runId);
   if (!runData) throw new Error(`Run not found: ${opts.runId}`);
   const { run, results } = runData;
@@ -119,6 +125,17 @@ export async function runPromote(opts: PromoteOptions): Promise<PromoteResult> {
     }
   } finally {
     await fs.rm(workDir, { recursive: true, force: true }).catch(() => {});
+  }
+
+  if (opts.targets === 'selected') {
+    for (const s of opts.selected ?? []) {
+      const inRun = results.some((r) => r.url === s.url && r.viewport === s.viewport);
+      if (!inRun) {
+        const reason = `not in run ${opts.runId}`;
+        skipped.push({ url: s.url, viewport: s.viewport, reason });
+        log(`  ✗ ${s.url} @ ${s.viewport}: ${reason}`);
+      }
+    }
   }
 
   log(`[visual-check] promote: ${promoted.length} promoted, ${skipped.length} skipped`);
