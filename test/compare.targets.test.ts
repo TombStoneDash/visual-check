@@ -131,7 +131,7 @@ describe('resolveCompareTarget — bare web addresses and missing local files', 
   });
 });
 
-describe('runCompare — missing local targets fail fast with no capture', () => {
+describe('runCompare — missing local targets are named, not guessed', () => {
   let workRoot: string;
 
   beforeEach(async () => {
@@ -143,61 +143,29 @@ describe('runCompare — missing local targets fail fast with no capture', () =>
     await fs.rm(workRoot, { recursive: true, force: true });
   });
 
-  it('rejects when the baseline is a non-existent local path and never starts the browser', async () => {
-    await expect(
-      runCompare({
-        baseline: 'old.htm',
-        current: 'https://example.com/b',
-        viewports: [{ name: 'mobile', width: 390, height: 844 }],
-        outRoot: workRoot,
-        threshold: 5,
-        loadTimeWarnMs: 3000,
-        lane,
-        quiet: true,
-      }),
-    ).rejects.toThrow(/old\.htm/);
-    await expect(
-      runCompare({
-        baseline: 'old.htm',
-        current: 'https://example.com/b',
-        viewports: [{ name: 'mobile', width: 390, height: 844 }],
-        outRoot: workRoot,
-        threshold: 5,
-        loadTimeWarnMs: 3000,
-        lane,
-        quiet: true,
-      }),
-    ).rejects.toThrow(/baseline/i);
-
-    expect(startSpy).not.toHaveBeenCalled();
-  });
-
-  it('rejects when the current target is a non-existent local path and never starts the browser', async () => {
-    await expect(
-      runCompare({
-        baseline: 'https://example.com/a',
-        current: 'missing-current.htm',
-        viewports: [{ name: 'mobile', width: 390, height: 844 }],
-        outRoot: workRoot,
-        threshold: 5,
-        loadTimeWarnMs: 3000,
-        lane,
-        quiet: true,
-      }),
-    ).rejects.toThrow(/missing-current\.htm/);
-    await expect(
-      runCompare({
-        baseline: 'https://example.com/a',
-        current: 'missing-current.htm',
-        viewports: [{ name: 'mobile', width: 390, height: 844 }],
-        outRoot: workRoot,
-        threshold: 5,
-        loadTimeWarnMs: 3000,
-        lane,
-        quiet: true,
-      }),
-    ).rejects.toThrow(/current/i);
-
-    expect(startSpy).not.toHaveBeenCalled();
+  // The run itself continues so test/cli.exit-codes.test.ts keeps its
+  // needs_baseline (exit 2) and error (exit 3) contract for unreadable files.
+  it.each([
+    ['baseline', 'old.htm', 'https://example.com/b'],
+    ['current', 'https://example.com/a', 'missing-current.htm'],
+  ])('warns about a missing --%s file even when quiet', async (side, baseline, current) => {
+    const lines: string[] = [];
+    await runCompare({
+      baseline,
+      current,
+      viewports: [{ name: 'mobile', width: 390, height: 844 }],
+      outRoot: workRoot,
+      threshold: 5,
+      loadTimeWarnMs: 3000,
+      lane,
+      quiet: true,
+      log: (l) => lines.push(l),
+    });
+    const missing = side === 'baseline' ? baseline : current;
+    const warning = lines.find((l) => l.startsWith('[visual-check] warning:'));
+    expect(warning).toBeDefined();
+    expect(warning).toContain(`--${side} "${missing}"`);
+    expect(warning).toContain(path.resolve(missing));
+    expect(lines.some((l) => l.includes(`https://${missing}`))).toBe(false);
   });
 });

@@ -217,6 +217,11 @@ export async function runCompare(opts: CompareOptions): Promise<CompareRunResult
   const baseline = resolveCompareTarget(opts.baseline);
   const current = resolveCompareTarget(opts.current);
 
+  // A missing local file is not guessed as a web address, and it does not
+  // abort the run: capture fails, so the report records needs_baseline
+  // (exit 2) or error (exit 3) as the exit-code contract requires. The
+  // warning says why, even in quiet mode.
+  const warn = opts.log ?? ((l: string) => console.error(l));
   const explicitSchemeRe = /^(https?|file):\/\//i;
   for (const [side, target] of [
     ['baseline', baseline],
@@ -229,8 +234,8 @@ export async function runCompare(opts: CompareOptions): Promise<CompareRunResult
       } catch {
         abs = target.raw;
       }
-      throw new Error(
-        `compare: --${side} "${target.raw}" is not a web address and no file exists at ${abs}. Use a full URL (https://...) or an existing file path.`,
+      warn(
+        `[visual-check] warning: compare: --${side} "${target.raw}" is not a web address and no file exists at ${abs}. Use a full URL (https://...) or an existing file path.`,
       );
     }
     if (target.kind === 'url' && !explicitSchemeRe.test(target.raw)) {
