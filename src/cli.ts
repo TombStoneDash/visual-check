@@ -26,6 +26,7 @@ import { runPromote } from './commands/promote.js';
 import { runCompare } from './commands/compare.js';
 import { describeExitCode, exitCodeFor, USAGE_OR_FATAL_EXIT_CODE } from './exit-codes.js';
 import { parseUrls, parseViewports, parseNumberOption } from './cli-args.js';
+import { loadProjectConfigFile, resolveConfigTargets } from './project-config.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -582,6 +583,31 @@ program
       process.exit(0);
     },
   );
+
+// ---------------------------------------------------------------------------
+// config-targets  (reads a project config; prints flags for the other commands)
+// ---------------------------------------------------------------------------
+
+program
+  .command('config-targets')
+  .description(
+    'Read a project config (.json/.mjs/.js) and print the --urls and --viewports values for the other commands',
+  )
+  .requiredOption('--config <path>', 'Project config file (see visual-check.config.example.ts)')
+  .requiredOption('--base-url <url>', 'Absolute http(s) URL the config routes are resolved against')
+  .action(async (opts: { config: string; baseUrl: string }) => {
+    try {
+      const config = await loadProjectConfigFile(opts.config);
+      const { urls, viewports, warnings } = resolveConfigTargets(config, opts.baseUrl);
+      for (const warning of warnings) console.error(`[visual-check] warning: ${warning}`);
+      console.log(`--urls=${urls.join(',')}`);
+      console.log(`--viewports=${viewports.map((v) => v.name).join(',')}`);
+      process.exit(0);
+    } catch (err) {
+      console.error(`[visual-check] config-targets: ${err instanceof Error ? err.message : String(err)}`);
+      process.exit(USAGE_OR_FATAL_EXIT_CODE);
+    }
+  });
 
 // ---------------------------------------------------------------------------
 // Error handling
