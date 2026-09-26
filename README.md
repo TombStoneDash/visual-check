@@ -246,8 +246,9 @@ Terminal states:
 | `READY_TO_REVIEW` | A human should review warnings, missing baselines, or visual diffs before promoting or fixing. |
 | `BLOCKED_WITH_OWNER` | Runtime/capture or HTTP assertions failed and need an assigned owner before retry. |
 
-`SHIPPED_PROVEN` is Visual Check's own run status: every check in this run passed
-for the URLs it captured. It is not evidence that a product was deployed,
+`SHIPPED_PROVEN` is Visual Check's own run status: every check that ran passed
+for the URLs it captured. Skipped checks did not run, so they prove nothing
+either way. It is not evidence that a product was deployed,
 released, or is live for customers. Proof of a deployment comes from the deploy
 itself (the hosting provider's deployment record plus a live check of the site).
 Visual Check uses no other terminal states.
