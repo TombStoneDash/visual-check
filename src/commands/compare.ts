@@ -9,7 +9,8 @@
  * resolved to `file://` URLs so Playwright can capture them directly.
  */
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { existsSync } from 'node:fs';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { Capturer, sanitizeCaptureError } from '../capture.js';
 import { diffPngs, DiffResult } from '../diff.js';
 import { buildTargetResult } from '../checks.js';
@@ -26,16 +27,98 @@ export interface CompareTarget {
   url: string;
   /** Human-readable label used in reports (relative path for local files). */
   label: string;
+  /** Whether this target navigates to a URL or a local file. */
+  kind?: 'url' | 'file';
+  /** For `kind: 'file'` targets, whether a file/directory exists at the resolved path. */
+  exists?: boolean;
+}
+
+const LOCAL_HOST_RE = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i;
+
+/** Extensions that keep a bare `label.ext` string a file path, never a guessed web address. */
+const PAGE_FILE_EXTENSIONS = new Set([
+  'html',
+  'htm',
+  'xhtml',
+  'svg',
+  'png',
+  'jpg',
+  'jpeg',
+  'gif',
+  'webp',
+  'pdf',
+  'txt',
+  'md',
+  'json',
+  'xml',
+  'js',
+  'css',
+]);
+
+function splitHostAndRest(raw: string): { hostPort: string; rest: string } | null {
+  const match = raw.match(/^([^/?#]+)([/?#].*)?$/);
+  if (!match) return null;
+  return { hostPort: match[1]!, rest: match[2] ?? '' };
+}
+
+/**
+ * True when `raw` reads like something a person typed as a web address
+ * (`example.com`, `staging.example.com/pricing?x=1`, `localhost:3000`) rather
+ * than a local file path. Local-path markers (backslash, leading `.`/`/`/`~`,
+ * a Windows drive letter) and bare `name.ext` strings whose extension is a
+ * known page/file extension always win as file paths.
+ */
+export function looksLikeWebAddress(raw: string): boolean {
+  if (!raw) return false;
+  if (raw.includes('\\')) return false;
+  if (raw.startsWith('.') || raw.startsWith('/') || raw.startsWith('~')) return false;
+  if (/^[A-Za-z]:/.test(raw)) return false;
+
+  const split = splitHostAndRest(raw);
+  if (!split) return false;
+  const { hostPort } = split;
+
+  if (LOCAL_HOST_RE.test(hostPort)) return true;
+
+  const domainMatch = hostPort.match(/^([a-zA-Z0-9-]+\.)+([a-zA-Z]{2,})(:\d+)?$/);
+  if (!domainMatch) return false;
+
+  const lastLabel = domainMatch[2]!.toLowerCase();
+  if (!raw.includes('/') && PAGE_FILE_EXTENSIONS.has(lastLabel)) return false;
+
+  return true;
 }
 
 /** Resolve a `--baseline`/`--current` argument to a navigable target. */
 export function resolveCompareTarget(raw: string, baseDir: string = process.cwd()): CompareTarget {
-  if (/^(https?|file):\/\//i.test(raw)) {
-    return { raw, url: raw, label: raw };
+  if (/^(https?):\/\//i.test(raw)) {
+    return { raw, url: raw, label: raw, kind: 'url' };
   }
+  if (/^file:\/\//i.test(raw)) {
+    let exists = false;
+    try {
+      exists = existsSync(fileURLToPath(raw));
+    } catch {
+      exists = false;
+    }
+    return { raw, url: raw, label: raw, kind: 'file', exists };
+  }
+
   const abs = path.resolve(baseDir, raw);
+  if (existsSync(abs)) {
+    const label = path.relative(baseDir, abs) || abs;
+    return { raw, url: pathToFileURL(abs).href, label, kind: 'file', exists: true };
+  }
+
+  if (looksLikeWebAddress(raw)) {
+    const { hostPort } = splitHostAndRest(raw)!;
+    const scheme = LOCAL_HOST_RE.test(hostPort) ? 'http' : 'https';
+    const guessedUrl = `${scheme}://${raw}`;
+    return { raw, url: guessedUrl, label: guessedUrl, kind: 'url' };
+  }
+
   const label = path.relative(baseDir, abs) || abs;
-  return { raw, url: pathToFileURL(abs).href, label };
+  return { raw, url: pathToFileURL(abs).href, label, kind: 'file', exists: false };
 }
 
 /**
@@ -133,6 +216,32 @@ export async function runCompare(opts: CompareOptions): Promise<CompareRunResult
 
   const baseline = resolveCompareTarget(opts.baseline);
   const current = resolveCompareTarget(opts.current);
+
+  // A missing local file is not guessed as a web address, and it does not
+  // abort the run: capture fails, so the report records needs_baseline
+  // (exit 2) or error (exit 3) as the exit-code contract requires. The
+  // warning says why, even in quiet mode.
+  const warn = opts.log ?? ((l: string) => console.error(l));
+  const explicitSchemeRe = /^(https?|file):\/\//i;
+  for (const [side, target] of [
+    ['baseline', baseline],
+    ['current', current],
+  ] as const) {
+    if (target.kind === 'file' && target.exists === false) {
+      let abs: string;
+      try {
+        abs = fileURLToPath(target.url);
+      } catch {
+        abs = target.raw;
+      }
+      warn(
+        `[visual-check] warning: compare: --${side} "${target.raw}" is not a web address and no file exists at ${abs}. Use a full URL (https://...) or an existing file path.`,
+      );
+    }
+    if (target.kind === 'url' && !explicitSchemeRe.test(target.raw)) {
+      log(`[visual-check] compare: reading "${target.raw}" as ${target.url}`);
+    }
+  }
 
   log(
     `[visual-check] compare: baseline="${baseline.label}" current="${current.label}" × ${opts.viewports.length} viewport(s) (threshold ${opts.threshold}%)`,
