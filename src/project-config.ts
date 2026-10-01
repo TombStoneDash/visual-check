@@ -104,10 +104,9 @@ export function resolveConfigTargets(
     urls.push(href);
   }
 
-  const viewports =
-    Array.isArray(config.viewports) && config.viewports.length > 0 && config.viewports.every(isUsableViewport)
-      ? config.viewports
-      : DEFAULT_VIEWPORTS;
+  const usableConfigViewports =
+    Array.isArray(config.viewports) && config.viewports.length > 0 && config.viewports.every(isUsableViewport);
+  const viewports = usableConfigViewports ? (config.viewports as ViewportSpec[]) : DEFAULT_VIEWPORTS;
 
   const topLevel = Object.keys(config)
     .filter((key) => !APPLIED_KEYS.has(key))
@@ -120,5 +119,23 @@ export function resolveConfigTargets(
       return `route "${route.id}": ${extra.join(', ')} not applied by config-targets yet`;
     });
 
-  return { urls, viewports, warnings: [...topLevel, ...routeWarnings] };
+  const viewportWarnings: string[] = [];
+  if (config.viewports !== undefined && !usableConfigViewports) {
+    const names = DEFAULT_VIEWPORTS.map((v) => v.name);
+    const namesWithOr = names.length > 1 ? `${names.slice(0, -1).join(', ')} or ${names[names.length - 1]}` : names[0];
+    viewportWarnings.push(
+      `viewports: not used (each entry needs a name of ${namesWithOr} and a positive width and height); using ${names.join(', ')}`,
+    );
+  } else if (usableConfigViewports) {
+    for (const viewport of viewports) {
+      const def = DEFAULT_VIEWPORTS.find((v) => v.name === viewport.name);
+      if (def && (def.width !== viewport.width || def.height !== viewport.height)) {
+        viewportWarnings.push(
+          `viewport "${viewport.name}": size ${viewport.width}x${viewport.height} is not applied by config-targets yet; run and compare use ${def.width}x${def.height}`,
+        );
+      }
+    }
+  }
+
+  return { urls, viewports, warnings: [...topLevel, ...routeWarnings, ...viewportWarnings] };
 }
