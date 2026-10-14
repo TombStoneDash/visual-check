@@ -25,8 +25,8 @@ import { runDeployGate } from './commands/deploy-gate.js';
 import { runPromote } from './commands/promote.js';
 import { runCompare } from './commands/compare.js';
 import { describeExitCode, exitCodeFor, USAGE_OR_FATAL_EXIT_CODE } from './exit-codes.js';
-import { parseUrls, parseViewports, parseNumberOption } from './cli-args.js';
-import { loadProjectConfigFile, resolveConfigTargets } from './project-config.js';
+import { formatViewportToken, parseUrls, parseViewports, parseNumberOption, UsageError } from './cli-args.js';
+import { loadProjectConfigFile, resolveConfigTargetsForCli } from './project-config.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -59,6 +59,61 @@ function reportVerdict(summary: RunSummary): Verdict {
   if (summary.warnings > 0) return 'warn';
   return 'pass';
 }
+
+
+/**
+ * Resolve URLs and viewports for run / compare / deploy-gate.
+ *
+ * Without --config every command behaves as before: --urls is required
+ * (same commander error) and --viewports parses as today. With --config the
+ * project config supplies urls and viewports (custom sizes applied); an
+ * explicit --urls / --viewports flag overrides the config value and says so
+ * once on stderr. The URL list is the same one config-targets prints.
+ */
+interface ConfigFlags {
+  config?: string;
+  baseUrl?: string;
+  urls?: string;
+  viewports?: string;
+}
+
+async function resolveTargets(
+  cmd: Command,
+  opts: ConfigFlags,
+  { urlsRequired }: { urlsRequired: boolean },
+): Promise<{ urls: string[]; viewports: ViewportSpec[]; baseUrl?: string }> {
+  const viewportsFromFlag = cmd.getOptionValueSource('viewports') === 'cli';
+  if (opts.config === undefined) {
+    if (opts.baseUrl !== undefined) {
+      throw new UsageError('--base-url needs --config (it resolves the config routes against that URL)');
+    }
+    if (urlsRequired && opts.urls === undefined) {
+      cmd.error("error: required option '--urls <urls>' not specified");
+    }
+    return {
+      urls: opts.urls === undefined ? [] : parseUrls(opts.urls),
+      viewports: parseViewports(opts.viewports),
+    };
+  }
+  const config = await loadProjectConfigFile(opts.config);
+  const resolved = resolveConfigTargetsForCli(config, opts.baseUrl);
+  for (const warning of resolved.warnings) console.error(`[visual-check] warning: ${warning}`);
+  let urls = resolved.urls;
+  if (opts.urls !== undefined) {
+    console.error('[visual-check] notice: --urls overrides config routes');
+    urls = parseUrls(opts.urls);
+  }
+  let viewports = resolved.viewports;
+  if (viewportsFromFlag) {
+    console.error('[visual-check] notice: --viewports overrides config viewports');
+    viewports = parseViewports(opts.viewports);
+  }
+  return { urls, viewports, baseUrl: resolved.baseUrl };
+}
+
+const VIEWPORTS_HELP = 'Comma-separated viewports: names (mobile,tablet,desktop) or name:WIDTHxHEIGHT (desktop:1280x800)';
+const CONFIG_HELP = 'Project config (.json/.mjs/.js) supplying routes and viewports; see README "Project config"';
+const BASE_URL_HELP = 'Absolute http(s) URL the config routes are resolved against (default: the config baseUrl)';
 
 // ---------------------------------------------------------------------------
 // Program
@@ -151,12 +206,11 @@ program
 program
   .command('run')
   .description('Capture current screenshots and compare against baselines')
-  .requiredOption('--urls <urls>', 'Comma-separated URLs')
-  .option(
-    '--viewports <list>',
-    'Comma-separated viewport names (mobile,tablet,desktop)',
-    'mobile,tablet,desktop',
-  )
+  .option('--urls <urls>', 'Comma-separated URLs (required unless --config is given)')
+  .option('--config <path>', CONFIG_HELP)
+  .option('--base-url <url>', BASE_URL_HELP)
+  .option('--viewports <list>', VIEWPORTS_HELP, 'mobile,tablet,desktop')
+  .option('--dry-run', 'Print the resolved targets (url @ viewport WxH) and exit 0 without a browser', false)
   .option('--out <dir>', 'Workspace root directory', '.')
   .option('--threshold <pct>', 'Pixel diff threshold (% of pixels changed)', '5')
   .option('--load-time-warn <ms>', 'Load time warning threshold (ms)', '3000')
@@ -174,8 +228,11 @@ program
   )
   .action(
     async (opts: {
-      urls: string;
+      urls?: string;
+      config?: string;
+      baseUrl?: string;
       viewports?: string;
+      dryRun?: boolean;
       out: string;
       threshold: string;
       loadTimeWarn: string;
@@ -186,9 +243,8 @@ program
       quiet?: boolean;
       headed?: boolean;
       strictWarn?: boolean;
-    }) => {
-      const urls = parseUrls(opts.urls);
-      const viewports = parseViewports(opts.viewports);
+    }, cmd: Command) => {
+      const { urls, viewports } = await resolveTargets(cmd, opts, { urlsRequired: true });
       const root = path.resolve(opts.out);
       const baselineRoot = path.join(root, 'baselines');
       const dateStr = new Date().toISOString().slice(0, 10);
@@ -202,6 +258,14 @@ program
       const concurrency = parseNumberOption('--concurrency', opts.concurrency, {
         min: 1, max: 16, integer: true,
       });
+
+      if (opts.dryRun) {
+        console.log(`[visual-check] run (dry run): ${urls.length} URL(s) × ${viewports.length} viewport(s)`);
+        for (const url of urls) {
+          for (const vp of viewports) console.log(`  ${url} @ ${vp.name} ${vp.width}x${vp.height}`);
+        }
+        process.exit(0);
+      }
 
       if (!opts.quiet) {
         console.log(
@@ -368,12 +432,13 @@ program
     'Compare a baseline URL/page against a current URL/page — no stored baselines, no credentials, no cloud service',
   )
   .requiredOption('--baseline <target>', 'Baseline URL or local file path')
-  .requiredOption('--current <target>', 'Current URL or local file path to compare against the baseline')
   .option(
-    '--viewports <list>',
-    'Comma-separated viewport names (mobile,tablet,desktop)',
-    'mobile,desktop',
+    '--current <target>',
+    'Current URL or local file path to compare against the baseline (required unless --config is given: then the first config route)',
   )
+  .option('--config <path>', CONFIG_HELP)
+  .option('--base-url <url>', BASE_URL_HELP)
+  .option('--viewports <list>', VIEWPORTS_HELP, 'mobile,desktop')
   .option('--out <dir>', 'Workspace root directory', '.')
   .option('--threshold <pct>', 'Pixel diff threshold (% of pixels changed)', '5')
   .option('--load-time-warn <ms>', 'Load time warning threshold (ms)', '3000')
@@ -395,7 +460,9 @@ program
   .action(
     async (opts: {
       baseline: string;
-      current: string;
+      current?: string;
+      config?: string;
+      baseUrl?: string;
       viewports?: string;
       out: string;
       threshold: string;
@@ -407,8 +474,19 @@ program
       quiet?: boolean;
       headed?: boolean;
       strictWarn?: boolean;
-    }) => {
-      const viewports = parseViewports(opts.viewports);
+    }, cmd: Command) => {
+      const resolved = await resolveTargets(cmd, { ...opts, urls: undefined }, { urlsRequired: false });
+      const { viewports } = resolved;
+      let current = opts.current;
+      if (current === undefined) {
+        if (opts.config === undefined || resolved.urls.length === 0) {
+          cmd.error("error: required option '--current <target>' not specified");
+        }
+        current = resolved.urls[0]!;
+        console.error(
+          `[visual-check] notice: --current defaults to the first config route ${current}; compare checks one page per run`,
+        );
+      }
       const threshold = parseNumberOption('--threshold', opts.threshold, { min: 0, max: 100 });
       const loadTimeWarnMs = parseNumberOption('--load-time-warn', opts.loadTimeWarn, {
         min: 0, exclusiveMin: true, integer: true,
@@ -419,7 +497,7 @@ program
 
       const { report } = await runCompare({
         baseline: opts.baseline,
-        current: opts.current,
+        current,
         viewports,
         outRoot: opts.out,
         threshold,
@@ -444,16 +522,14 @@ program
 program
   .command('deploy-gate')
   .description('Run Visual Check against a deploy URL, persist to Supabase, alert on failure')
-  .requiredOption('--urls <urls>', 'Comma-separated URLs to check')
+  .option('--urls <urls>', 'Comma-separated URLs to check (required unless --config is given)')
+  .option('--config <path>', CONFIG_HELP)
+  .option('--base-url <url>', BASE_URL_HELP)
   .requiredOption('--project <id>', 'Project id (e.g. "trashalert")')
   .requiredOption('--deployment-url <url>', 'Deploy URL under test (for report context)')
   .option('--branch <name>', 'Git branch name')
   .option('--sha <commit>', 'Git commit SHA')
-  .option(
-    '--viewports <list>',
-    'Comma-separated viewport names (mobile,tablet,desktop)',
-    'mobile,tablet,desktop',
-  )
+  .option('--viewports <list>', VIEWPORTS_HELP, 'mobile,tablet,desktop')
   .option('--out <dir>', 'Workspace root directory', '.')
   .option('--threshold <pct>', 'Pixel diff threshold (% of pixels changed)', '5')
   .option('--load-time-warn <ms>', 'Load time warning threshold (ms)', '3000')
@@ -466,7 +542,9 @@ program
   .option('--headed', 'Run Chromium headed (for debugging)', false)
   .action(
     async (opts: {
-      urls: string;
+      urls?: string;
+      config?: string;
+      baseUrl?: string;
       project: string;
       deploymentUrl: string;
       branch?: string;
@@ -482,9 +560,8 @@ program
       receipt?: string;
       quiet?: boolean;
       headed?: boolean;
-    }) => {
-      const urls = parseUrls(opts.urls);
-      const viewports = parseViewports(opts.viewports);
+    }, cmd: Command) => {
+      const { urls, viewports } = await resolveTargets(cmd, opts, { urlsRequired: true });
       const threshold = parseNumberOption('--threshold', opts.threshold, { min: 0, max: 100 });
       const loadTimeWarnMs = parseNumberOption('--load-time-warn', opts.loadTimeWarn, {
         min: 0, exclusiveMin: true, integer: true,
@@ -594,14 +671,14 @@ program
     'Read a project config (.json/.mjs/.js) and print the --urls and --viewports values for the other commands',
   )
   .requiredOption('--config <path>', 'Project config file (see visual-check.config.example.ts)')
-  .requiredOption('--base-url <url>', 'Absolute http(s) URL the config routes are resolved against')
-  .action(async (opts: { config: string; baseUrl: string }) => {
+  .option('--base-url <url>', BASE_URL_HELP)
+  .action(async (opts: { config: string; baseUrl?: string }) => {
     try {
       const config = await loadProjectConfigFile(opts.config);
-      const { urls, viewports, warnings } = resolveConfigTargets(config, opts.baseUrl);
+      const { urls, viewports, warnings } = resolveConfigTargetsForCli(config, opts.baseUrl);
       for (const warning of warnings) console.error(`[visual-check] warning: ${warning}`);
       console.log(`--urls=${urls.join(',')}`);
-      console.log(`--viewports=${viewports.map((v) => v.name).join(',')}`);
+      console.log(`--viewports=${viewports.map(formatViewportToken).join(',')}`);
       process.exit(0);
     } catch (err) {
       console.error(`[visual-check] config-targets: ${err instanceof Error ? err.message : String(err)}`);

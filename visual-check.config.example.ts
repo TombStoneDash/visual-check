@@ -1,11 +1,12 @@
 /**
- * Example project config matching the V2 spec (§3.2). The V1 CLI does
- * not read this file yet — it takes URLs via flags. This example is
- * here so you can commit a per-repo config alongside code today and
- * the V2 runner will pick it up as-is.
+ * Example project config. Read by `config-targets`, `run`, `compare` and
+ * `deploy-gate` via `--config` (JSON or .mjs; .ts configs are not loaded):
+ * `projectId`, `baseUrl`, `routes[].path` and `viewports` (custom sizes
+ * included) are applied; every other key is reported as "not applied yet"
+ * on stderr. See README "Project config" for the per-command table.
  *
- * Usage (V2):
- *   import { defineConfig } from '@noui/visual-check';
+ * Commit a `.mjs`/`.json` copy of this shape alongside your code; this
+ * `.ts` file is the type reference (`ProjectConfig`) for those copies.
  */
 
 import type {
@@ -17,6 +18,8 @@ import type {
 
 export interface ProjectConfig {
   projectId: string;
+  /** Absolute http(s) URL the routes resolve against when --base-url is not given. */
+  baseUrl?: string;
   baseBranch: string;
   routes: RouteSpec[];
   viewports: ViewportSpec[];

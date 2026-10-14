@@ -5,7 +5,12 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadProjectConfigFile, resolveConfigTargets } from '../src/project-config.js';
+import {
+  loadProjectConfigFile,
+  resolveConfigBaseUrl,
+  resolveConfigTargets,
+  resolveConfigTargetsForCli,
+} from '../src/project-config.js';
 import { DEFAULT_VIEWPORTS } from '../src/types.js';
 import { USAGE_OR_FATAL_EXIT_CODE } from '../src/exit-codes.js';
 
@@ -96,6 +101,39 @@ describe('loadProjectConfigFile + resolveConfigTargets', () => {
   it('rejects a non-http base URL', async () => {
     const config = await loadProjectConfigFile(await writeJson('vc.json', base));
     expect(() => resolveConfigTargets(config, 'ftp://example.com')).toThrow(/base-url/);
+  });
+});
+
+describe('baseUrl field and the shared CLI helper', () => {
+  it('honors config baseUrl when no flag is given, and does not warn about it', async () => {
+    const config = await loadProjectConfigFile(await writeJson('vc.json', { ...base, baseUrl: 'https://cfg.example' }));
+    const resolved = resolveConfigTargetsForCli(config);
+    expect(resolved.baseUrl).toBe('https://cfg.example');
+    expect(resolved.urls).toEqual(['https://cfg.example/', 'https://cfg.example/pricing']);
+    expect(resolved.warnings).toEqual([]);
+  });
+
+  it('lets --base-url win over config baseUrl', async () => {
+    const config = await loadProjectConfigFile(await writeJson('vc.json', { ...base, baseUrl: 'https://cfg.example' }));
+    expect(resolveConfigBaseUrl(config, 'https://flag.example')).toBe('https://flag.example');
+    expect(resolveConfigTargetsForCli(config, 'https://flag.example').urls[0]).toBe('https://flag.example/');
+  });
+
+  it('names --base-url when neither the flag nor the field is present', async () => {
+    const config = await loadProjectConfigFile(await writeJson('vc.json', base));
+    expect(() => resolveConfigTargetsForCli(config)).toThrow(/--base-url is required/);
+  });
+
+  it.each(['ftp://x.example', 'relative/path', 42])('rejects an invalid baseUrl field %j at load time', async (baseUrl) => {
+    await expect(loadProjectConfigFile(await writeJson('bad.json', { ...base, baseUrl }))).rejects.toThrow(/baseUrl/);
+  });
+
+  it('run --config resolves the same URL list config-targets prints (shared helper)', async () => {
+    const config = await loadProjectConfigFile(await writeJson('vc.json', { ...base, viewports: [{ name: 'desktop', width: 1280, height: 800 }] }));
+    const viaCli = resolveConfigTargetsForCli(config, 'https://example.com');
+    const viaConfigTargets = resolveConfigTargets(config, 'https://example.com');
+    expect(viaCli.urls).toEqual(viaConfigTargets.urls);
+    expect(viaCli.viewports).toEqual(viaConfigTargets.viewports);
   });
 });
 

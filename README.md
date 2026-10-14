@@ -155,6 +155,35 @@ as `run`. Exit codes: `0` (pass/warn), `1` (fail, or warn with `--strict-warn`),
 `deploy-gate` still exits `0`/`1` for report pass/fail; usage errors and crashes exit `3` for every command. See [`HACKATHON_DEMO.md`](./HACKATHON_DEMO.md)
 for a full walkthrough.
 
+### Project config
+
+`run`, `compare` and `deploy-gate` read the same project config as
+`config-targets` (`--config <path>`, JSON or `.mjs`/`.js`; `.ts` configs are
+not loaded). The config supplies the URL list and the viewports, so a repo can
+commit one file instead of repeating flags:
+
+```bash
+node dist/cli.js run \
+  --config examples/projects/pyramid-builder.config.mjs \
+  --base-url https://prelithic.com \
+  --json reports/latest.json
+```
+
+| Config field | Applied by | Notes |
+|--------------|-----------|-------|
+| `routes[].path` | `config-targets`, `run`, `deploy-gate`, `compare` (first route only) | Resolved against `--base-url`, else the config `baseUrl`; neither present is a usage error. Duplicates collapse. |
+| `baseUrl` | `config-targets` (fallback), `run`, `compare`, `deploy-gate` | Optional absolute http(s) URL. `--base-url` wins over it. |
+| `viewports[]` | `config-targets`, `run`, `compare`, `deploy-gate` | Known names (`mobile`, `tablet`, `desktop`) at any positive size; the size is captured as given. Unusable lists fall back to the defaults with one warning. |
+| `projectId` | all | Required, identifies the config. `deploy-gate` still takes `--project`. |
+| everything else (`checks`, `themes`, `lane`, `waitFor`, `maskSelectors`, ...) | none yet | Reported once each on stderr as `not applied by config-targets yet`, never silently dropped. |
+
+Precedence: an explicit `--urls` or `--viewports` flag beats the config value
+and prints one stderr notice (`[visual-check] notice: --urls overrides config routes`).
+Without `--config` every command behaves exactly as before (`--urls` is still
+required). `run --dry-run` prints the resolved `url @ viewport WxH` list and
+exits 0 without starting a browser. `config-targets` prints `--viewports=desktop:1280x800`
+for a custom size, so its output round-trips into the other commands.
+
 ## Screenshots
 
 _Placeholder — a real HTML report screenshot will be added before public launch. The report renders a three-column layout (mobile baseline / mobile capture / diff overlay), with a sticky summary header and collapsible per-check detail._
@@ -363,7 +392,7 @@ node dist/cli.js baseline \
 | Flag | Default | Notes |
 |------|---------|-------|
 | `--urls` | required | Comma-separated. Bare hostnames get `https://` auto-prefixed. |
-| `--viewports` | `mobile,tablet,desktop` | Subset of the three named sizes. |
+| `--viewports` | `mobile,tablet,desktop` | Names, or `name:WIDTHxHEIGHT` for a custom size. |
 | `--out` | `.` | Workspace root. Baselines go under `<out>/baselines/`. |
 | `--headed` | off | Show the browser window (debugging). |
 
@@ -382,8 +411,11 @@ node dist/cli.js run \
 
 | Flag | Default | Notes |
 |------|---------|-------|
-| `--urls` | required | Same as `baseline`. |
-| `--viewports` | `mobile,tablet,desktop` | |
+| `--urls` | required unless `--config` | Same as `baseline`. Overrides the config routes. |
+| `--config <path>` | — | Project config (see "Project config"). Supplies URLs and viewports. |
+| `--base-url <url>` | config `baseUrl` | Base the config routes resolve against. |
+| `--viewports` | `mobile,tablet,desktop` | Names or `name:WIDTHxHEIGHT` (`desktop:1280x800`). Overrides the config viewports. |
+| `--dry-run` | off | Print the resolved targets and exit 0, no browser. |
 | `--out` | `.` | Workspace root. Captures go under `<out>/captures/`. |
 | `--threshold` | `5` | Pixel diff % to trigger fail. |
 | `--load-time-warn` | `3000` | Load-time warning threshold in ms. |
@@ -411,8 +443,10 @@ node dist/cli.js compare \
 | Flag | Default | Notes |
 |------|---------|-------|
 | `--baseline` | required | URL or local file path. Local paths resolve to `file://` URLs. |
-| `--current` | required | Same as `--baseline`. This is the side reports label as the target `url`. |
-| `--viewports` | `mobile,desktop` | Subset of the three named sizes. |
+| `--current` | required unless `--config` | Same as `--baseline`. This is the side reports label as the target `url`. With `--config` it defaults to the first config route (one notice). |
+| `--config <path>` | — | Project config: supplies viewports (and the default `--current`). |
+| `--base-url <url>` | config `baseUrl` | Base the config routes resolve against. |
+| `--viewports` | `mobile,desktop` | Names or `name:WIDTHxHEIGHT`. Overrides the config viewports. |
 | `--out` | `.` | Workspace root. Captures go under `<out>/compare/<timestamp>/`. |
 | `--threshold` | `5` | Pixel diff % to trigger fail. |
 | `--load-time-warn` | `3000` | Load-time warning threshold in ms. |

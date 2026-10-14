@@ -20,11 +20,13 @@ export interface ProjectConfigInput {
   projectId: string;
   routes: ProjectConfigRoute[];
   viewports?: ViewportSpec[];
+  /** Absolute http(s) URL the routes resolve against when --base-url is not given. */
+  baseUrl?: string;
   [key: string]: unknown;
 }
 
 const SUPPORTED_EXTENSIONS = ['.json', '.mjs', '.js'];
-const APPLIED_KEYS = new Set(['projectId', 'routes', 'viewports']);
+const APPLIED_KEYS = new Set(['projectId', 'routes', 'viewports', 'baseUrl']);
 const ROUTE_KEYS = new Set(['id', 'path']);
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -52,7 +54,20 @@ function validateConfig(raw: unknown, filePath: string): ProjectConfigInput {
       throw new Error(`${filePath}: routes[${index}].path must be a string starting with "/"`);
     }
   });
+  if (raw.baseUrl !== undefined && !isAbsoluteHttpUrl(raw.baseUrl)) {
+    throw new Error(`${filePath}: baseUrl must be an absolute http:// or https:// URL`);
+  }
   return raw as ProjectConfigInput;
+}
+
+function isAbsoluteHttpUrl(value: unknown): value is string {
+  if (typeof value !== 'string') return false;
+  try {
+    const url = new URL(value);
+    return (url.protocol === 'http:' || url.protocol === 'https:') && url.hostname !== '';
+  } catch {
+    return false;
+  }
 }
 
 export async function loadProjectConfigFile(filePath: string): Promise<ProjectConfigInput> {
@@ -85,15 +100,10 @@ export function resolveConfigTargets(
   config: ProjectConfigInput,
   baseUrl: string,
 ): { urls: string[]; viewports: ViewportSpec[]; warnings: string[] } {
-  let base: URL;
-  try {
-    base = new URL(baseUrl);
-  } catch {
+  if (!isAbsoluteHttpUrl(baseUrl)) {
     throw new Error(`Invalid --base-url: ${baseUrl} (expected an absolute http:// or https:// URL)`);
   }
-  if ((base.protocol !== 'http:' && base.protocol !== 'https:') || base.hostname === '') {
-    throw new Error(`Invalid --base-url: ${baseUrl} (expected an absolute http:// or https:// URL)`);
-  }
+  const base = new URL(baseUrl);
 
   const urls: string[] = [];
   const seen = new Set<string>();
@@ -126,16 +136,26 @@ export function resolveConfigTargets(
     viewportWarnings.push(
       `viewports: not used (each entry needs a name of ${namesWithOr} and a positive width and height); using ${names.join(', ')}`,
     );
-  } else if (usableConfigViewports) {
-    for (const viewport of viewports) {
-      const def = DEFAULT_VIEWPORTS.find((v) => v.name === viewport.name);
-      if (def && (def.width !== viewport.width || def.height !== viewport.height)) {
-        viewportWarnings.push(
-          `viewport "${viewport.name}": size ${viewport.width}x${viewport.height} is not applied by config-targets yet; run and compare use ${def.width}x${def.height}`,
-        );
-      }
-    }
   }
 
   return { urls, viewports, warnings: [...topLevel, ...routeWarnings, ...viewportWarnings] };
+}
+
+/**
+ * Pick the base URL for a config-driven command: the --base-url flag when
+ * given, else the config's own baseUrl, else a clear usage error.
+ */
+export function resolveConfigBaseUrl(config: ProjectConfigInput, baseUrlFlag?: string): string {
+  if (baseUrlFlag !== undefined) return baseUrlFlag;
+  if (config.baseUrl !== undefined) return config.baseUrl;
+  throw new Error('--base-url is required: the config has no baseUrl field and --base-url was not given');
+}
+
+/** `resolveConfigTargets` for the CLI: same URL list as config-targets, base URL from flag or config. */
+export function resolveConfigTargetsForCli(
+  config: ProjectConfigInput,
+  baseUrlFlag?: string,
+): { baseUrl: string; urls: string[]; viewports: ViewportSpec[]; warnings: string[] } {
+  const baseUrl = resolveConfigBaseUrl(config, baseUrlFlag);
+  return { baseUrl, ...resolveConfigTargets(config, baseUrl) };
 }

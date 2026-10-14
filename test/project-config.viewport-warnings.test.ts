@@ -46,19 +46,16 @@ describe('resolveConfigTargets viewport warnings', () => {
     expect(viewportWarnings[0]).toContain('desktop');
   });
 
-  it('uses a resized desktop config viewport unchanged, plus one size warning', async () => {
+  it('uses a resized desktop config viewport as-is with no size warning (sizes are applied)', async () => {
     const config = await loadProjectConfigFile(
       await writeJson('vc.json', { ...base, viewports: [{ name: 'desktop', width: 1280, height: 800 }] }),
     );
     const result = resolveConfigTargets(config, 'https://example.com');
     expect(result.viewports).toEqual([{ name: 'desktop', width: 1280, height: 800 }]);
-    const viewportWarnings = result.warnings.filter((w) => w.startsWith('viewport '));
-    expect(viewportWarnings).toHaveLength(1);
-    expect(viewportWarnings[0]).toContain('1280x800');
-    expect(viewportWarnings[0]).toContain('1440x900');
+    expect(result.warnings.filter((w) => w.startsWith('viewport'))).toHaveLength(0);
   });
 
-  it('gives exactly one size warning when only one of two entries is resized', async () => {
+  it('keeps both entries, one resized, with no viewport warning', async () => {
     const config = await loadProjectConfigFile(
       await writeJson('vc.json', {
         ...base,
@@ -69,10 +66,11 @@ describe('resolveConfigTargets viewport warnings', () => {
       }),
     );
     const result = resolveConfigTargets(config, 'https://example.com');
-    const viewportWarnings = result.warnings.filter((w) => w.startsWith('viewport '));
-    expect(viewportWarnings).toHaveLength(1);
-    expect(viewportWarnings[0]).toContain('desktop');
-    expect(viewportWarnings[0]).toContain('1280x800');
+    expect(result.viewports).toEqual([
+      { name: 'mobile', width: 390, height: 844 },
+      { name: 'desktop', width: 1280, height: 800 },
+    ]);
+    expect(result.warnings.filter((w) => w.startsWith('viewport'))).toHaveLength(0);
   });
 
   it('gives no viewport warning when viewports is absent', async () => {
@@ -128,11 +126,11 @@ function runCli(args: string[]) {
 }
 
 describe('config-targets CLI with a resized viewport', () => {
-  it('exits 0, keeps --viewports= names unchanged, and warns about the size on stderr', async () => {
+  it('exits 0, prints --viewports=desktop:1280x800 and no size warning', async () => {
     const file = await writeJson('vc.json', { ...base, viewports: [{ name: 'desktop', width: 1280, height: 800 }] });
     const result = runCli(['config-targets', '--config', file, '--base-url', 'https://example.com']);
     expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout).toBe('--urls=https://example.com/\n--viewports=desktop\n');
-    expect(result.stderr).toContain('[visual-check] warning: viewport "desktop"');
+    expect(result.stdout).toBe('--urls=https://example.com/\n--viewports=desktop:1280x800\n');
+    expect(result.stderr).not.toContain('viewport "desktop"');
   });
 });
