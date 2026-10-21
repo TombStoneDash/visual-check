@@ -1,0 +1,126 @@
+name: Visual Check gate
+description: >
+  Capture a site's pages and diff them against baselines committed in your repo.
+  No secrets, no cloud service. Red on a diff over the threshold or a missing baseline.
+inputs:
+  config:
+    description: Project config file in your repo (routes + viewports), see examples/projects/
+    required: true
+  base-url:
+    description: Site the config routes are resolved against (default the config baseUrl)
+    required: false
+    default: ""
+  project:
+    description: Key in visual-check thresholds.json (THRESHOLDS.md) used when threshold-pct is empty
+    required: false
+    default: ""
+  threshold-pct:
+    description: Pixel diff threshold in percent; overrides the thresholds.json value
+    required: false
+    default: ""
+  baseline-dir:
+    description: Folder in your repo holding the committed baselines
+    required: false
+    default: visual-check/baselines
+  mode:
+    description: "gate (compare against baselines) or refresh (rewrite baseline-dir)"
+    required: false
+    default: gate
+outputs:
+  terminal-state:
+    description: SHIPPED_PROVEN, READY_TO_REVIEW or BLOCKED_WITH_OWNER
+    value: ${{ steps.gate.outputs.terminal_state }}
+  exit-code:
+    description: visual-check exit code (0 pass, 1 fail, 2 needs baseline, 3 error)
+    value: ${{ steps.gate.outputs.exit_code }}
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v4
+      with:
+        node-version: "20"
+    - name: Install Visual Check
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: |
+        npm ci --ignore-scripts
+        npx playwright install --with-deps chromium
+        npm run build
+    - name: Resolve targets
+      id: targets
+      shell: bash
+      env:
+        VC: ${{ github.action_path }}
+        CONFIG: ${{ inputs.config }}
+        BASE_URL: ${{ inputs.base-url }}
+        PROJECT: ${{ inputs.project }}
+        THRESHOLD: ${{ inputs.threshold-pct }}
+        MODE: ${{ inputs.mode }}
+      run: |
+        case "$MODE" in gate|refresh) ;; *) echo "mode must be gate or refresh" >&2; exit 3;; esac
+        args=(--config "$CONFIG"); [ -n "$BASE_URL" ] && args+=(--base-url "$BASE_URL")
+        echo "work=$RUNNER_TEMP/visual-check" >> "$GITHUB_OUTPUT"
+        if [ "$MODE" = gate ]; then
+          if [ -z "$PROJECT" ]; then
+            PROJECT=$(node --input-type=module -e "const m=await import(process.argv[1]);console.log(m.default.projectId)" "$(realpath "$CONFIG")" 2>/dev/null || true)
+          fi
+          echo "project=$PROJECT" >> "$GITHUB_OUTPUT"
+          echo "threshold=$(node "$VC/scripts/gate-threshold.mjs" "$PROJECT" "$THRESHOLD")" >> "$GITHUB_OUTPUT"
+        fi
+        node "$VC/dist/cli.js" config-targets "${args[@]}" > "$RUNNER_TEMP/vc-targets.txt"
+        echo "urls=$(sed -n 's/^--urls=//p' "$RUNNER_TEMP/vc-targets.txt")" >> "$GITHUB_OUTPUT"
+        echo "viewports=$(sed -n 's/^--viewports=//p' "$RUNNER_TEMP/vc-targets.txt")" >> "$GITHUB_OUTPUT"
+    - name: Refresh baselines
+      if: inputs.mode == 'refresh'
+      shell: bash
+      env:
+        VC: ${{ github.action_path }}
+        WORK: ${{ steps.targets.outputs.work }}
+        DIR: ${{ inputs.baseline-dir }}
+        URLS: ${{ steps.targets.outputs.urls }}
+        VIEWPORTS: ${{ steps.targets.outputs.viewports }}
+      run: |
+        node "$VC/dist/cli.js" baseline --urls "$URLS" --viewports "$VIEWPORTS" --out "$WORK"
+        mkdir -p "$DIR"
+        cp -R "$WORK/baselines/." "$DIR/"
+    - name: Gate
+      id: gate
+      if: inputs.mode == 'gate'
+      shell: bash
+      env:
+        VC: ${{ github.action_path }}
+        WORK: ${{ steps.targets.outputs.work }}
+        DIR: ${{ inputs.baseline-dir }}
+        URLS: ${{ steps.targets.outputs.urls }}
+        VIEWPORTS: ${{ steps.targets.outputs.viewports }}
+        THRESHOLD: ${{ steps.targets.outputs.threshold }}
+        PROJECT: ${{ steps.targets.outputs.project }}
+      run: |
+        mkdir -p "$WORK/baselines"
+        [ -d "$DIR" ] && cp -R "$DIR/." "$WORK/baselines/"
+        set +e
+        node "$VC/dist/cli.js" run --urls "$URLS" --viewports "$VIEWPORTS" --out "$WORK" \
+          --threshold "$THRESHOLD" --json "$WORK/report.json"
+        code=$?
+        set -e
+        echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+        if [ -f "$WORK/report.json" ]; then
+          echo "terminal_state=$(node -e "console.log(require(process.argv[1]).terminal_state)" "$WORK/report.json")" >> "$GITHUB_OUTPUT"
+        fi
+        node "$VC/scripts/gate-summary.mjs" "$WORK/report.json" "$PROJECT" "$THRESHOLD" "$code" >> "$GITHUB_STEP_SUMMARY"
+    - name: Upload report
+      if: always() && inputs.mode == 'gate'
+      uses: actions/upload-artifact@v4
+      with:
+        name: visual-check-${{ github.job }}-${{ github.run_attempt }}
+        path: |
+          ${{ steps.targets.outputs.work }}/report.*
+          ${{ steps.targets.outputs.work }}/receipt*.json
+          ${{ steps.targets.outputs.work }}/diffs/
+          ${{ steps.targets.outputs.work }}/captures/
+        if-no-files-found: warn
+        retention-days: 14
+    - name: Enforce verdict
+      if: inputs.mode == 'gate'
+      shell: bash
+      run: exit "${{ steps.gate.outputs.exit_code }}"

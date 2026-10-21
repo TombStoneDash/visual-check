@@ -1,7 +1,7 @@
 # Visual Check — per-project pixel-diff thresholds
 
 `visual-check deploy-gate --threshold <pct>` controls the pixel-diff fail gate.
-Defaults are codified in `.github/workflows/visual-check.yml`. Override per
+Machine-readable copy: `thresholds.json` (the gate action reads it; a test keeps it in step with this table). Override per
 run with `--threshold` on the CLI or the `threshold` input on
 `workflow_dispatch`.
 

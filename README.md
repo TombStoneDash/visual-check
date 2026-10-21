@@ -589,3 +589,23 @@ The Apache 2.0 license includes an explicit patent grant, which we chose deliber
 ---
 
 *"Don't let your agent say 'done' until it has shown its work."*
+
+## GitHub Action: zero-secret deploy gate
+
+`action.yml` runs `visual-check run` against baselines committed in your repo
+and fails the job on a diff over the threshold or a missing baseline. No
+Supabase, no Telegram, no secret. Copy `examples/consumer/visual-check.yml`
+into `.github/workflows/` and pin the action to a commit SHA.
+
+| Input | Default | Meaning |
+|---|---|---|
+| `config` | required | Project config (routes + viewports) |
+| `base-url` | config `baseUrl` | Site the routes resolve against |
+| `project` | config `projectId` | Key in `thresholds.json` |
+| `threshold-pct` | from `thresholds.json` | Overrides the table value |
+| `baseline-dir` | `visual-check/baselines` | Committed baselines |
+| `mode` | `gate` | `refresh` recaptures baselines into `baseline-dir` |
+
+`thresholds.json` mirrors `THRESHOLDS.md`; a test keeps them in step. The job
+summary shows the terminal state, threshold and the top three diffs; the HTML
+report, captures and diff images are uploaded as an artifact.

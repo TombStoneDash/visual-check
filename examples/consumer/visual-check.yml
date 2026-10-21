@@ -1,0 +1,50 @@
+# Copy to .github/workflows/visual-check.yml in a consumer repo.
+# Needs only GITHUB_TOKEN. Baselines live in this repo under visual-check/baselines.
+name: visual-check
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      refresh:
+        description: Recapture baselines and open a PR with them
+        type: boolean
+        default: false
+permissions:
+  contents: write
+  pull-requests: write
+jobs:
+  gate:
+    if: github.event_name == 'pull_request' || !inputs.refresh
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: TombStoneDash/visual-check@<pinned-sha>
+        with:
+          config: visual-check/visual-check.config.mjs
+          base-url: https://prelithic.com
+          project: prelithic
+  refresh-baselines:
+    if: github.event_name == 'workflow_dispatch' && inputs.refresh
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: TombStoneDash/visual-check@<pinned-sha>
+        with:
+          config: visual-check/visual-check.config.mjs
+          base-url: https://prelithic.com
+          mode: refresh
+      - name: Open a PR with the new baselines
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          branch="visual-check/refresh-baselines-${{ github.run_id }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898299+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add visual-check/baselines
+          git diff --cached --quiet && { echo "Baselines unchanged."; exit 0; }
+          git commit -m "chore(visual-check): refresh baselines"
+          git push origin "$branch"
+          gh pr create --title "chore(visual-check): refresh baselines" --body "Recaptured by the refresh-baselines job. Review the PNGs before merging."
