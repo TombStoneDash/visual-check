@@ -37,3 +37,46 @@ jobs:
         run: npm test
       - name: Build
         run: npm run build
+
+  # F2: the gate action (action.yml) against a fixture consumer. Baselines are
+  # captured in this job so they match the runner's fonts; the gate must be
+  # green on the unchanged page and red after a one-word edit.
+  gate-action:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Serve fixture site
+        run: |
+          python3 -m http.server 4173 --bind 127.0.0.1 --directory examples/consumer/site &
+          for i in $(seq 1 20); do curl -sf http://127.0.0.1:4173/ >/dev/null && break; sleep 0.5; done
+      - name: Capture baselines (refresh mode)
+        uses: ./
+        with:
+          config: examples/consumer/visual-check.config.mjs
+          baseline-dir: ${{ runner.temp }}/fixture-baselines
+          mode: refresh
+      - name: Gate on unchanged page (must pass)
+        id: same
+        uses: ./
+        with:
+          config: examples/consumer/visual-check.config.mjs
+          baseline-dir: ${{ runner.temp }}/fixture-baselines
+          threshold-pct: "0.1"
+      - name: One-word edit
+        run: sed -i 's/Fixture consumer home/Fixture consumer XXXX/' examples/consumer/site/index.html
+      - name: Gate on edited page (must fail)
+        id: edited
+        continue-on-error: true
+        uses: ./
+        with:
+          config: examples/consumer/visual-check.config.mjs
+          baseline-dir: ${{ runner.temp }}/fixture-baselines
+          threshold-pct: "0.1"
+      - name: Check verdicts
+        run: |
+          echo "unchanged: ${{ steps.same.outputs.terminal-state }} exit ${{ steps.same.outputs.exit-code }}"
+          echo "edited:    ${{ steps.edited.outputs.terminal-state }} exit ${{ steps.edited.outputs.exit-code }} outcome ${{ steps.edited.outcome }}"
+          test "${{ steps.same.outputs.exit-code }}" = 0
+          test "${{ steps.edited.outcome }}" = failure
+          test "${{ steps.edited.outputs.exit-code }}" = 1
