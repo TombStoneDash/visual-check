@@ -27,6 +27,7 @@ export {
   formatSummary,
 } from './report.js';
 export { renderHtmlReport, htmlReportPathFor } from './html-report.js';
+export { explainReport } from './explain.js';
 export { buildReceipt, nextActionFor, receiptPathFor, writeReceipt } from './receipt.js';
 export { runPool } from './pool.js';
 export type { PoolResult } from './pool.js';
