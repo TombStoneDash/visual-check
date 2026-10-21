@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 import { Command, CommanderError } from 'commander';
 import path from 'node:path';
+import { promises as fs } from 'node:fs';
 import { Capturer, sanitizeCaptureError, urlToSlug } from './capture.js';
+import { explainReport, speak } from './explain.js';
 import { diffPngs, fileExists } from './diff.js';
 import { buildTargetResult } from './checks.js';
 import {
@@ -16,6 +18,7 @@ import { runPool } from './pool.js';
 import {
   BaselineLane,
   CaptureArtifact,
+  RunReport,
   RunSummary,
   TargetResult,
   Verdict,
@@ -684,6 +687,47 @@ program
       console.error(`[visual-check] config-targets: ${err instanceof Error ? err.message : String(err)}`);
       process.exit(USAGE_OR_FATAL_EXIT_CODE);
     }
+  });
+
+// ---------------------------------------------------------------------------
+// explain  (reads a report file; no browser, no network)
+// ---------------------------------------------------------------------------
+
+program
+  .command('explain')
+  .description('Explain a Visual Check report in a few plain-words sentences')
+  .requiredOption('--report <path>', 'Path to a JSON report file (schema_version 1)')
+  .option('--say', 'Speak the explanation aloud (macOS only)', false)
+  .option('--json', 'Print { headline, sentences, text } as JSON instead of text', false)
+  .action(async (opts: { report: string; say?: boolean; json?: boolean }) => {
+    const raw = await fs.readFile(path.resolve(opts.report), 'utf-8');
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      throw new Error(`--report ${opts.report} is not valid JSON`);
+    }
+    const looksLikeReport =
+      typeof parsed === 'object' &&
+      parsed !== null &&
+      (parsed as { schema_version?: unknown }).schema_version === 1 &&
+      Array.isArray((parsed as { results?: unknown }).results);
+    if (!looksLikeReport) {
+      throw new Error(
+        `--report ${opts.report} is not a Visual Check report (expected schema_version 1 with a results array)`,
+      );
+    }
+
+    const explanation = explainReport(parsed as RunReport);
+    if (opts.json) {
+      console.log(JSON.stringify(explanation));
+    } else {
+      console.log(explanation.text);
+    }
+    if (opts.say) {
+      await speak(explanation.text);
+    }
+    process.exit(0);
   });
 
 // ---------------------------------------------------------------------------
