@@ -429,6 +429,21 @@ node dist/cli.js run \
 
 Exit codes: `0` (pass/warn), `1` (fail, or warn with `--strict-warn`), `2` (needs_baseline), `3` (error, wrong usage or crash).
 
+#### `explain`
+
+Turn a saved JSON report into a short, plain-language summary. This reads the
+report locally; it does not run a new check.
+
+```bash
+node dist/cli.js explain --report reports/latest.json
+node dist/cli.js explain --report reports/latest.json --json
+node dist/cli.js explain --report reports/latest.json --say
+```
+
+`--json` prints the headline, sentences, and full text as JSON. `--say` also reads
+the text aloud on macOS when `/usr/bin/say` is available. Speech failure does not
+change the command's result.
+
 #### `compare`
 
 ```bash

@@ -250,7 +250,7 @@ describe('explainReport', () => {
     const explanation = explainReport(report);
     expect(explanation.headline).toBe('2 pages checked. 2 are fine.');
     expect(explanation.sentences).toEqual([
-      '1 pages loaded with small warnings.',
+      '1 page loaded with small warnings.',
       'Someone should open the report and look at the pictures.',
     ]);
   });
@@ -318,6 +318,24 @@ describe('explainReport', () => {
 
     const explanation = explainReport(report);
     expect(explanation.sentences[0]).toBe('trashalert.io/pricing has no approved picture yet on every screen size.');
+  });
+
+  it('removes www and only says every screen size when all configured viewports match', () => {
+    const report = buildReport({
+      urls: ['https://www.example.com/pricing'],
+      viewports: [MOBILE, DESKTOP],
+      pixelDiffThreshold: 5,
+      loadTimeWarnMs: 3000,
+      results: [
+        tgt({ url: 'https://www.example.com/pricing', viewport: 'mobile', verdict: 'needs_baseline' }),
+        tgt({ url: 'https://www.example.com/pricing', viewport: 'tablet', verdict: 'needs_baseline' }),
+      ],
+      lane,
+    });
+
+    expect(explainReport(report).sentences[0]).toBe(
+      'example.com/pricing has no approved picture yet on phone and tablet.',
+    );
   });
 
   it('uses a non-URL label from a compare report as-is', () => {

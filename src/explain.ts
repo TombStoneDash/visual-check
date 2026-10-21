@@ -71,7 +71,7 @@ interface ProblemGroup {
 }
 
 function viewportsPhraseFor(group: ProblemGroup, allViewports: string[]): string {
-  if (allViewports.length > 0 && group.viewports.size === allViewports.length) {
+  if (allViewports.length > 0 && allViewports.every((v) => group.viewports.has(v))) {
     return 'on every screen size';
   }
   const ordered = allViewports.filter((v) => group.viewports.has(v));
@@ -181,7 +181,8 @@ export function explainReport(report: RunReport): Explanation {
 
   const sentences = [...problemSentences];
   if (problemSentences.length === 0 && report.summary.warnings > 0) {
-    sentences.push(`${report.summary.warnings} pages loaded with small warnings.`);
+    const count = report.summary.warnings;
+    sentences.push(`${count} ${count === 1 ? 'page' : 'pages'} loaded with small warnings.`);
   }
   sentences.push(TERMINAL_SENTENCE[report.terminal_state]);
 
