@@ -119,7 +119,9 @@ export async function runDeployGate(opts: DeployGateOptions): Promise<DeployGate
   try {
     const runOne = async (t: Target): Promise<TargetResult> => {
       const cap: CaptureArtifact = await capturer.capture(t.url, t.vp, t.capPath);
-      const baselineExists = !cap.error && t.hasBaseline && (await fileExists(t.basePath));
+      // A failed capture keeps the approved baseline in the report so the
+      // reviewer still sees what the page should look like.
+      const baselineExists = t.hasBaseline && (await fileExists(t.basePath));
       let diff = null;
       if (!cap.error && baselineExists) {
         try {

@@ -7,7 +7,8 @@ import os from 'node:os';
 // These replace every external dependency of deploy-gate so the test
 // exercises orchestration only. No real browser, no real network.
 
-vi.mock('../src/capture.js', () => ({
+vi.mock('../src/capture.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../src/capture.js')>()),
   Capturer: class {
     async start(): Promise<void> {}
     async stop(): Promise<void> {}
@@ -230,5 +231,36 @@ describe('runDeployGate baseline fetch failures', () => {
     expect(path.relative(path.join(workRoot, 'baselines'), target).startsWith('..')).toBe(true);
     expect(target.startsWith(path.join(workRoot, 'remote-baselines') + path.sep)).toBe(true);
     expect(await fs.readFile(localBaseline, 'utf-8')).toBe('local approved baseline');
+  });
+});
+
+describe('runDeployGate capture failures', () => {
+  it('keeps the approved baseline in the result when the current capture fails', async () => {
+    vi.mocked(storage.downloadBaseline).mockResolvedValueOnce('fake-path.png');
+    const { Capturer } = await import('../src/capture.js');
+    const spy = vi.spyOn(Capturer.prototype, 'capture').mockImplementationOnce(
+      async (url: string, vp: { name: string }, outPath: string) => ({
+        url,
+        viewport: vp.name,
+        screenshotPath: outPath,
+        httpStatus: null,
+        consoleErrors: [],
+        loadTimeMs: 5,
+        error: 'network_unavailable',
+      }),
+    );
+    const { diffPngs } = await import('../src/diff.js');
+
+    const result = await runDeployGate(baseOpts());
+    const target = result.report.results[0]!;
+
+    expect(target.verdict).toBe('error');
+    expect(target.baseline).toBe(vi.mocked(storage.downloadBaseline).mock.calls[0]![4]);
+    expect(target.checks.find((c) => c.name === 'pixel_diff')?.message).toBe(
+      'skipped due to capture error',
+    );
+    expect(result.report.summary.needs_baseline).toBe(0);
+    expect(diffPngs).not.toHaveBeenCalled();
+    spy.mockRestore();
   });
 });

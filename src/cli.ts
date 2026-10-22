@@ -297,7 +297,9 @@ program
 
       const runOne = async (t: Target): Promise<TargetResult> => {
         const cap: CaptureArtifact = await capturer.capture(t.url, t.vp, t.capPath);
-        const baselineExists = !cap.error && (await fileExists(t.basePath));
+        // A failed capture keeps the approved baseline in the report so the
+        // reviewer still sees what the page should look like.
+        const baselineExists = await fileExists(t.basePath);
         let diff = null;
         if (!cap.error && baselineExists) {
           try {
