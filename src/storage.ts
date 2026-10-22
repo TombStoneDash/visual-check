@@ -112,9 +112,11 @@ async function downloadBytes(bucket: StorageBucket, keyPath: string): Promise<Ui
 }
 
 /**
- * Resolve the active baseline for (project, url, viewport, lane), stream it
- * into `targetPath`, and return the local path. Returns null if no approved
- * baseline exists — the caller should fall back to `needs_baseline`.
+ * Resolve the active baseline for (project, url, viewport, lane) and stream
+ * it into `targetPath`. Returns the local path plus the storage key the
+ * bytes actually came from (the row's `storage_path`, which can predate the
+ * current key layout), or null if no approved baseline exists — the caller
+ * should fall back to `needs_baseline`.
  */
 export async function downloadBaseline(
   projectId: string,
@@ -122,11 +124,11 @@ export async function downloadBaseline(
   viewport: string,
   lane: BaselineLane,
   targetPath: string,
-): Promise<string | null> {
+): Promise<{ localPath: string; storagePath: string } | null> {
   const row = await getActiveBaseline(projectId, url, viewport, lane);
   if (!row) return null;
   const bytes = await downloadBytes('visual-check-baselines', row.storage_path);
   await fs.mkdir(path.dirname(targetPath), { recursive: true });
   await fs.writeFile(targetPath, bytes);
-  return targetPath;
+  return { localPath: targetPath, storagePath: row.storage_path };
 }

@@ -116,7 +116,7 @@ describe('downloadBaseline', () => {
     expect(result).toBeNull();
   });
 
-  it('writes PNG bytes to targetPath and returns the path on hit', async () => {
+  it('writes PNG bytes to targetPath and returns the path and the storage key it read on hit', async () => {
     vi.mocked(db.getActiveBaseline).mockResolvedValue({
       id: 'b1',
       project_id: 'trashalert',
@@ -131,12 +131,13 @@ describe('downloadBaseline', () => {
       run_id: 'vc_1',
     });
     const payload = new Uint8Array([137, 80, 78, 71]);
-    const { fn } = mockFetchSequence([{ ok: true, bytes: payload }]);
+    const { calls, fn } = mockFetchSequence([{ ok: true, bytes: payload }]);
     vi.stubGlobal('fetch', fn);
 
     const target = path.join(tmpDir, 'out.png');
     const result = await downloadBaseline('trashalert', 'https://x', 'mobile', lane, target);
-    expect(result).toBe(target);
+    expect(result).toEqual({ localPath: target, storagePath: 'trashalert/x/mobile.png' });
+    expect(calls[0]!.url).toMatch(/\/visual-check-baselines\/trashalert\/x\/mobile\.png$/);
     const bytes = await fs.readFile(target);
     expect(Array.from(bytes)).toEqual(Array.from(payload));
   });

@@ -135,7 +135,10 @@ describe('runDeployGate orchestration', () => {
   });
 
   it('does NOT alert when verdict is pass (baseline downloaded, diff within threshold)', async () => {
-    vi.mocked(storage.downloadBaseline).mockResolvedValueOnce('fake-path.png');
+    vi.mocked(storage.downloadBaseline).mockResolvedValueOnce({
+      localPath: 'fake-path.png',
+      storagePath: 'trashalert/linux-github-actions/preview-vercel-app/mobile.png',
+    });
     const { diffPngs } = await import('../src/diff.js');
     vi.mocked(diffPngs).mockResolvedValueOnce({
       diffPercentage: 1,
@@ -156,7 +159,10 @@ describe('runDeployGate orchestration', () => {
   });
 
   it('alerts on fail verdict (pixel diff over threshold)', async () => {
-    vi.mocked(storage.downloadBaseline).mockResolvedValueOnce('fake-path.png');
+    vi.mocked(storage.downloadBaseline).mockResolvedValueOnce({
+      localPath: 'fake-path.png',
+      storagePath: 'trashalert/linux-github-actions/preview-vercel-app/mobile.png',
+    });
     // default diffPngs mock returns 20% — over 5% threshold → fail
 
     const result = await runDeployGate(baseOpts());
@@ -173,6 +179,32 @@ describe('runDeployGate orchestration', () => {
     expect(result.report.branch).toBe('main');
     expect(result.report.commitSha).toBe('deadbeef');
     expect(result.report.storageKeys?.htmlReport).toBeTruthy();
+  });
+
+  it('records the storage key the baseline was read from, not a recomputed one', async () => {
+    // A baseline promoted before lane-scoped keys (#30) is stored without the
+    // lane segment; the result row must point at that object, which exists.
+    vi.mocked(storage.downloadBaseline).mockResolvedValueOnce({
+      localPath: 'fake-path.png',
+      storagePath: 'trashalert/trashalert-io/mobile.png',
+    });
+
+    const result = await runDeployGate(baseOpts());
+
+    const k = 'https://trashalert.io|mobile';
+    expect(result.report.storageKeys?.baselines[k]).toBe('trashalert/trashalert-io/mobile.png');
+    expect(db.insertResults).toHaveBeenCalledWith(
+      result.report.run_id,
+      result.report.results,
+      expect.objectContaining({
+        baselines: { [k]: 'trashalert/trashalert-io/mobile.png' },
+      }),
+    );
+  });
+
+  it('records no baseline key when there is no approved baseline', async () => {
+    const result = await runDeployGate(baseOpts());
+    expect(result.report.storageKeys?.baselines).toEqual({});
   });
 
   it('does not call insertRun twice on a single run', async () => {
