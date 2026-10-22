@@ -35,6 +35,7 @@
     "pngjs": "^7.0.0"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.2.17",
     "@types/node": "^22.7.5",
     "@types/pixelmatch": "^5.2.6",
     "@types/pngjs": "^6.0.5",
