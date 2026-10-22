@@ -25,7 +25,7 @@ import {
   ViewportSpec,
 } from './types.js';
 import { runDeployGate } from './commands/deploy-gate.js';
-import { runPromote } from './commands/promote.js';
+import { resolvePromoteSelection, runPromote } from './commands/promote.js';
 import { runCompare } from './commands/compare.js';
 import { describeExitCode, exitCodeFor, USAGE_OR_FATAL_EXIT_CODE } from './exit-codes.js';
 import { formatViewportToken, parseUrls, parseViewports, parseNumberOption, UsageError } from './cli-args.js';
@@ -609,10 +609,10 @@ program
   .command('promote')
   .description('Promote passed targets from a stored run to become the approved baseline')
   .requiredOption('--run-id <id>', 'Run id to promote (e.g. vc_xxx)')
-  .option('--targets <mode>', 'all | selected (requires --select)', 'all')
+  .option('--targets <mode>', 'all | selected (default: selected when --select is given, else all)')
   .option(
     '--select <list>',
-    'Comma-separated "url@viewport" pairs when --targets=selected',
+    'Comma-separated "url@viewport" pairs to promote (implies --targets selected)',
   )
   .option('--approved-by <name>', 'Name/identifier of the approver')
   .option(
@@ -628,29 +628,24 @@ program
   .action(
     async (opts: {
       runId: string;
-      targets?: 'all' | 'selected';
+      targets?: string;
       select?: string;
       approvedBy?: string;
       seed?: boolean;
       acceptFail?: boolean;
     }) => {
-      const selected =
-        opts.targets === 'selected' && opts.select
-          ? opts.select
-              .split(',')
-              .map((s) => s.trim())
-              .filter(Boolean)
-              .map((s) => {
-                const at = s.lastIndexOf('@');
-                if (at < 0) throw new Error(`Invalid --select entry (want "url@viewport"): ${s}`);
-                return { url: s.slice(0, at), viewport: s.slice(at + 1) };
-              })
-          : undefined;
+      let selection: ReturnType<typeof resolvePromoteSelection>;
+      try {
+        selection = resolvePromoteSelection(opts.targets, opts.select);
+      } catch (err) {
+        console.error(`[visual-check] promote: ${err instanceof Error ? err.message : String(err)}`);
+        process.exit(USAGE_OR_FATAL_EXIT_CODE);
+      }
 
       const { promoted, skipped } = await runPromote({
         runId: opts.runId,
-        targets: opts.targets,
-        selected,
+        targets: selection.targets,
+        selected: selection.selected,
         approvedBy: opts.approvedBy,
         seed: opts.seed === true,
         acceptFail: opts.acceptFail === true,

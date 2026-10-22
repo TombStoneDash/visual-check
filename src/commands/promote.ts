@@ -13,6 +13,7 @@ import { baselineStorageKey } from '../baseline-key.js';
 import * as storage from '../storage.js';
 import * as db from '../db.js';
 import { BaselineLane } from '../types.js';
+import { UsageError } from '../cli-args.js';
 
 export interface PromoteOptions {
   runId: string;
@@ -32,6 +33,44 @@ export interface PromoteOptions {
    */
   acceptFail?: boolean;
   log?: (line: string) => void;
+}
+
+export const PROMOTE_TARGET_MODES = ['all', 'selected'] as const;
+export type PromoteTargetMode = (typeof PROMOTE_TARGET_MODES)[number];
+
+/**
+ * Resolve `--targets` / `--select` into a mode and a pair list.
+ *
+ * `--select` on its own means `selected`: before, it was silently ignored
+ * unless `--targets selected` was also given, so `promote --select X
+ * --accept-fail` promoted every target in the run. An unknown mode, an
+ * explicit `--targets all` next to `--select`, `selected` with nothing
+ * selected, and a malformed pair are all usage errors (exit 3).
+ */
+export function resolvePromoteSelection(
+  targets: string | undefined,
+  select: string | undefined,
+): { targets: PromoteTargetMode; selected?: Array<{ url: string; viewport: string }> } {
+  if (targets !== undefined && !(PROMOTE_TARGET_MODES as readonly string[]).includes(targets)) {
+    throw new UsageError(`Invalid --targets: ${targets} (expected ${PROMOTE_TARGET_MODES.join(' or ')})`);
+  }
+  const entries = (select ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+  if (targets === 'all' && select !== undefined) {
+    throw new UsageError('--targets all cannot be combined with --select; drop one of them');
+  }
+  const mode: PromoteTargetMode = targets === 'selected' || select !== undefined ? 'selected' : 'all';
+  if (mode === 'all') return { targets: mode };
+  if (entries.length === 0) {
+    throw new UsageError('--targets selected needs at least one --select "<url>@<viewport>" pair');
+  }
+  const selected = entries.map((s) => {
+    const at = s.lastIndexOf('@');
+    if (at <= 0 || at === s.length - 1) {
+      throw new UsageError(`Invalid --select entry (want "url@viewport"): ${s}`);
+    }
+    return { url: s.slice(0, at), viewport: s.slice(at + 1) };
+  });
+  return { targets: mode, selected };
 }
 
 export interface PromoteResult {

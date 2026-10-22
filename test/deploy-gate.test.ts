@@ -180,3 +180,32 @@ describe('runDeployGate orchestration', () => {
     expect(db.insertRun).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('runDeployGate warnings under --quiet', () => {
+  it('still reports a failed db persist on stderr when quiet, and the run still returns', async () => {
+    vi.mocked(db.insertRun).mockRejectedValueOnce(new Error('relation does not exist'));
+    const stderr = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const stdout = vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      await runDeployGate(baseOpts({ quiet: true }));
+      const errLines = stderr.mock.calls.map((c) => String(c[0]));
+      expect(errLines.some((l) => l.includes('[warn] db persist failed: relation does not exist'))).toBe(true);
+      expect(stdout.mock.calls.some((c) => String(c[0]).includes('[warn]'))).toBe(false);
+    } finally {
+      stderr.mockRestore();
+      stdout.mockRestore();
+    }
+  });
+
+  it('routes upload and alert failures to the injected warn sink, not the silenced log', async () => {
+    vi.mocked(storage.uploadArtifact).mockRejectedValue(new Error('bucket missing'));
+    const warnings: string[] = [];
+    try {
+      await runDeployGate(baseOpts({ quiet: true, warn: (l: string) => warnings.push(l) }));
+    } finally {
+      vi.mocked(storage.uploadArtifact).mockImplementation(async (_l: string, _b: string, key: string) => key);
+    }
+    expect(warnings.some((l) => l.includes('upload screenshot failed') && l.includes('bucket missing'))).toBe(true);
+    expect(warnings.some((l) => l.includes('upload HTML report failed'))).toBe(true);
+  });
+});
