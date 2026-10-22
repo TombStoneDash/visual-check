@@ -28,6 +28,25 @@ export function parseUrls(raw: string): string[] {
   return urls;
 }
 
+const PROJECT_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+
+/**
+ * Parse `--project`. The id is the first segment of every Supabase Storage
+ * key (`<project>/<run>/...`, `<project>/<lane>/...`), so a "/" would nest
+ * one project's objects inside another's, and "", "." or ".." would escape
+ * the project prefix. Allow 1-64 letters, digits, ".", "_" and "-",
+ * starting with a letter or digit.
+ */
+export function parseProjectId(raw: string): string {
+  const id = raw.trim();
+  if (!PROJECT_ID_RE.test(id)) {
+    throw new UsageError(
+      `Invalid --project: ${JSON.stringify(raw)} (expected 1-64 letters, digits, ".", "_" or "-", starting with a letter or digit, e.g. "trashalert")`,
+    );
+  }
+  return id;
+}
+
 const VIEWPORT_TOKEN_RE = /^([^:]+):(\d+)x(\d+)$/;
 
 /**

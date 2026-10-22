@@ -28,7 +28,7 @@ import { runDeployGate } from './commands/deploy-gate.js';
 import { runPromote } from './commands/promote.js';
 import { runCompare } from './commands/compare.js';
 import { describeExitCode, exitCodeFor, USAGE_OR_FATAL_EXIT_CODE } from './exit-codes.js';
-import { formatViewportToken, parseUrls, parseViewports, parseNumberOption, UsageError } from './cli-args.js';
+import { formatViewportToken, parseProjectId, parseUrls, parseViewports, parseNumberOption, UsageError } from './cli-args.js';
 import { loadProjectConfigFile, resolveConfigTargetsForCli } from './project-config.js';
 
 // ---------------------------------------------------------------------------
@@ -565,6 +565,7 @@ program
       headed?: boolean;
     }, cmd: Command) => {
       const { urls, viewports } = await resolveTargets(cmd, opts, { urlsRequired: true });
+      const projectId = parseProjectId(opts.project);
       const threshold = parseNumberOption('--threshold', opts.threshold, { min: 0, max: 100 });
       const loadTimeWarnMs = parseNumberOption('--load-time-warn', opts.loadTimeWarn, {
         min: 0, exclusiveMin: true, integer: true,
@@ -584,7 +585,7 @@ program
         threshold,
         loadTimeWarnMs,
         concurrency,
-        projectId: opts.project,
+        projectId,
         deploymentUrl: opts.deploymentUrl,
         branch: opts.branch,
         commitSha: opts.sha,
