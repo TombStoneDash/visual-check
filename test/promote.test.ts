@@ -230,6 +230,44 @@ describe('runPromote', () => {
     expect(storage.uploadArtifact).toHaveBeenCalledTimes(2);
   });
 
+  it('never promotes a page that did not load, even with acceptFail and seed', async () => {
+    vi.mocked(db.getRun).mockResolvedValue({
+      run: {
+        id: 'vc_gone',
+        project_id: 'portfolio',
+        verdict: 'fail',
+        config: {
+          urls: ['https://x.io', 'https://gone.io'],
+          viewports: ['mobile'],
+          pixel_diff_threshold: 5,
+          load_time_warn_ms: 3000,
+          lane,
+        },
+        html_report_path: null,
+      },
+      results: [
+        { url: 'https://x.io', viewport: 'mobile', verdict: 'fail', http_status: 200, screenshot_path: 'k1.png' },
+        { url: 'https://gone.io', viewport: 'mobile', verdict: 'fail', http_status: 404, screenshot_path: 'k2.png' },
+        { url: 'https://gone.io', viewport: 'tablet', verdict: 'fail', http_status: null, screenshot_path: 'k3.png' },
+        { url: 'https://y.io', viewport: 'mobile', verdict: 'needs_baseline', http_status: 301, screenshot_path: 'k4.png' },
+      ],
+    });
+
+    const result = await runPromote({
+      runId: 'vc_gone',
+      acceptFail: true,
+      seed: true,
+      log: () => {},
+    });
+    expect(result.promoted.map((p) => p.url)).toEqual(['https://x.io', 'https://y.io']);
+    expect(result.skipped).toEqual([
+      { url: 'https://gone.io', viewport: 'mobile', reason: 'HTTP 404 (page did not load)' },
+      { url: 'https://gone.io', viewport: 'tablet', reason: 'no HTTP response (page did not load)' },
+    ]);
+    expect(db.upsertBaseline).toHaveBeenCalledTimes(2);
+    expect(storage.uploadArtifact).toHaveBeenCalledTimes(2);
+  });
+
   it('respects --targets=selected and only promotes chosen pairs', async () => {
     vi.mocked(db.getRun).mockResolvedValue({
       run: {

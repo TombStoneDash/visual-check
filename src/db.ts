@@ -213,6 +213,8 @@ export async function getRun(
   url: string;
   viewport: string;
   verdict: string;
+  /** Absent on rows read through an older/narrower select. */
+  http_status?: number | null;
   screenshot_path: string | null;
 }> } | null> {
   const runRes = await rest(
@@ -235,6 +237,7 @@ export async function getRun(
     url: string;
     viewport: string;
     verdict: string;
+    http_status?: number | null;
     screenshot_path: string | null;
   }>;
   return { run: runRows[0]!, results };

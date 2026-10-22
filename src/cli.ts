@@ -622,7 +622,7 @@ program
   )
   .option(
     '--accept-fail',
-    'Also accept fail targets — for re-baselining after an intentional UI change',
+    'Also accept fail targets — for re-baselining after an intentional UI change (pages that did not load are never promoted)',
     false,
   )
   .action(
