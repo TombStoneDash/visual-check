@@ -7,6 +7,7 @@ import {
 } from './types.js';
 import {
   CONSOLE_DIAGNOSTIC_CATEGORIES,
+  HOSTING_ERROR_CODES,
   sanitizeCaptureError,
   sanitizeConsoleDiagnostic,
 } from './capture.js';
@@ -143,11 +144,12 @@ export function checkHttpStatus(cap: CaptureArtifact): CheckResult {
     };
   }
   const ok = cap.httpStatus >= 200 && cap.httpStatus < 400;
+  const hosting = cap.hostingError ? HOSTING_ERROR_CODES.get(cap.hostingError) : undefined;
   return {
     name: 'http_status',
     mode,
     status: ok ? 'pass' : 'fail',
-    message: `HTTP ${cap.httpStatus}`,
+    message: !ok && hosting ? `HTTP ${cap.httpStatus} (${hosting})` : `HTTP ${cap.httpStatus}`,
     metric: cap.httpStatus,
     threshold: '< 400',
     blocking: !ok,
@@ -304,6 +306,9 @@ export function buildTargetResult(params: {
     baseline: baselineExists ? baselinePath : null,
     diff_image: diff?.diffImagePath ?? null,
     changed_region: diff && !diff.dimensionMismatch ? (diff.changedRegion ?? null) : null,
+    ...(cap.hostingError && HOSTING_ERROR_CODES.has(cap.hostingError)
+      ? { hosting_error: cap.hostingError }
+      : {}),
     console_errors: cap.consoleErrors.length,
     load_time_ms: cap.loadTimeMs,
     reasons,

@@ -122,6 +122,34 @@ export function sanitizeConsoleDiagnostic(value: unknown): ConsoleDiagnosticCate
 }
 
 /**
+ * Hosting-platform error codes that explain an unhealthy HTTP status better
+ * than the bare number: a Vercel 404 carrying DEPLOYMENT_NOT_FOUND means no
+ * deployment is bound to the domain (a hosting fix), not a broken route.
+ * Matched by exact header value only, so response text never reaches reports.
+ */
+export const HOSTING_ERROR_CODES = new Map<string, string>([
+  ['DEPLOYMENT_NOT_FOUND', 'Vercel DEPLOYMENT_NOT_FOUND: no deployment is assigned to this domain'],
+  ['DEPLOYMENT_DELETED', 'Vercel DEPLOYMENT_DELETED: the deployment for this domain was deleted'],
+  ['DEPLOYMENT_PAUSED', 'Vercel DEPLOYMENT_PAUSED: the deployment for this domain is paused'],
+  ['DEPLOYMENT_DISABLED', 'Vercel DEPLOYMENT_DISABLED: the deployment for this domain is disabled'],
+  ['DEPLOYMENT_BLOCKED', 'Vercel DEPLOYMENT_BLOCKED: the deployment for this domain is blocked'],
+  ['DNS_HOSTNAME_NOT_FOUND', 'Vercel DNS_HOSTNAME_NOT_FOUND: the hostname does not resolve on Vercel'],
+  ['FUNCTION_INVOCATION_FAILED', 'Vercel FUNCTION_INVOCATION_FAILED: a server function crashed'],
+  ['FUNCTION_INVOCATION_TIMEOUT', 'Vercel FUNCTION_INVOCATION_TIMEOUT: a server function timed out'],
+  ['MIDDLEWARE_INVOCATION_FAILED', 'Vercel MIDDLEWARE_INVOCATION_FAILED: middleware crashed'],
+]);
+
+/** Map response headers to a known hosting error code, or undefined. */
+export function hostingErrorFromHeaders(
+  headers: Record<string, string> | null | undefined,
+): string | undefined {
+  const raw = headers?.['x-vercel-error'];
+  if (typeof raw !== 'string') return undefined;
+  const code = raw.trim().toUpperCase();
+  return HOSTING_ERROR_CODES.has(code) ? code : undefined;
+}
+
+/**
  * Capturer wraps Playwright with the stable-capture rules from V2 spec §4.4:
  *   - disable CSS animations/transitions
  *   - wait for fonts before capture
@@ -164,6 +192,7 @@ export class Capturer {
 
     const consoleErrors: string[] = [];
     let httpStatus: number | null = null;
+    let hostingError: string | undefined;
     let error: string | undefined;
     let loadTimeMs: number;
 
@@ -202,6 +231,7 @@ export class Capturer {
       // file:// navigation never yields an HTTP response — treat a
       // successful local-page load as "200" rather than "no response".
       httpStatus = response ? response.status() : url.startsWith('file:') ? 200 : null;
+      hostingError = response ? hostingErrorFromHeaders(response.headers()) : undefined;
 
       // Stable-capture: disable animations, hide caret
       await page.addStyleTag({
@@ -245,6 +275,7 @@ export class Capturer {
       viewport: viewport.name,
       screenshotPath: outputPath,
       httpStatus,
+      ...(hostingError ? { hostingError } : {}),
       consoleErrors,
       loadTimeMs,
       error,

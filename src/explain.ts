@@ -40,6 +40,19 @@ function formatChangedPct(pct: number): string {
   return `${Math.round(pct)}%`;
 }
 
+/** Plain words for the hosting error codes in HOSTING_ERROR_CODES (capture.ts). */
+const HOSTING_ERROR_WORDS: Record<string, string> = {
+  DEPLOYMENT_NOT_FOUND: 'nothing is deployed there',
+  DEPLOYMENT_DELETED: 'nothing is deployed there',
+  DEPLOYMENT_PAUSED: 'the hosting is switched off',
+  DEPLOYMENT_DISABLED: 'the hosting is switched off',
+  DEPLOYMENT_BLOCKED: 'the hosting is switched off',
+  DNS_HOSTNAME_NOT_FOUND: 'the domain is not set up on the host',
+  FUNCTION_INVOCATION_FAILED: 'the server crashed',
+  FUNCTION_INVOCATION_TIMEOUT: 'the server timed out',
+  MIDDLEWARE_INVOCATION_FAILED: 'the server crashed',
+};
+
 type ProblemKind = 'did_not_load' | 'could_not_check' | 'looks_different' | 'no_baseline';
 
 const KIND_ORDER: ProblemKind[] = ['did_not_load', 'could_not_check', 'looks_different', 'no_baseline'];
@@ -66,6 +79,7 @@ interface ProblemGroup {
   viewports: Set<string>;
   status: number | null;
   statusSeen: boolean;
+  hostingWords: string | null;
   dimensionMismatch: boolean;
   maxDiffPct: number;
 }
@@ -84,6 +98,9 @@ function sentenceFor(group: ProblemGroup, allViewports: string[]): string {
   switch (group.kind) {
     case 'did_not_load': {
       const statusText = group.status !== null ? `error ${group.status}` : 'no response';
+      if (group.hostingWords) {
+        return `${group.site} did not load ${viewportsPhrase} (${statusText}: ${group.hostingWords}).`;
+      }
       return `${group.site} did not load ${viewportsPhrase} (${statusText}).`;
     }
     case 'could_not_check':
@@ -142,6 +159,7 @@ export function explainReport(report: RunReport): Explanation {
         viewports: new Set(),
         status: null,
         statusSeen: false,
+        hostingWords: null,
         dimensionMismatch: false,
         maxDiffPct: 0,
       };
@@ -152,6 +170,9 @@ export function explainReport(report: RunReport): Explanation {
     if (kind === 'did_not_load' && !group.statusSeen) {
       group.status = result.status;
       group.statusSeen = true;
+    }
+    if (kind === 'did_not_load' && !group.hostingWords && result.hosting_error) {
+      group.hostingWords = HOSTING_ERROR_WORDS[result.hosting_error] ?? null;
     }
     if (kind === 'looks_different') {
       if (result.diff_percentage === null) {

@@ -26,6 +26,7 @@ import {
 } from './types.js';
 import { runDeployGate } from './commands/deploy-gate.js';
 import { runPromote } from './commands/promote.js';
+import { runBaseline } from './commands/baseline.js';
 import { runCompare } from './commands/compare.js';
 import { describeExitCode, exitCodeFor, USAGE_OR_FATAL_EXIT_CODE } from './exit-codes.js';
 import { formatViewportToken, parseUrls, parseViewports, parseNumberOption, UsageError } from './cli-args.js';
@@ -161,42 +162,18 @@ program
   .option('--out <dir>', 'Workspace root directory', '.')
   .option('--headed', 'Run Chromium headed (for debugging)', false)
   .action(async (opts: { urls: string; viewports?: string; out: string; headed?: boolean }) => {
-    const urls = parseUrls(opts.urls);
-    const viewports = parseViewports(opts.viewports);
-    const root = path.resolve(opts.out);
-    const baselineRoot = path.join(root, 'baselines');
-
-    console.log(
-      `[visual-check] baseline: ${urls.length} URL(s) × ${viewports.length} viewport(s) → ${baselineRoot}`,
-    );
-
-    const capturer = new Capturer({ headless: !opts.headed });
-    await capturer.start();
-
-    let failures = 0;
-    try {
-      for (const url of urls) {
-        const slug = urlToSlug(url);
-        for (const vp of viewports) {
-          const outPath = path.join(baselineRoot, slug, `${vp.name}.png`);
-          process.stdout.write(`  ${url} @ ${vp.name} ... `);
-          const cap = await capturer.capture(url, vp, outPath);
-          if (cap.error) {
-            console.log(`ERROR: ${cap.error}`);
-            failures++;
-          } else {
-            console.log(
-              `OK (HTTP ${cap.httpStatus ?? '—'}, ${cap.loadTimeMs}ms) → ${path.relative(root, outPath)}`,
-            );
-          }
-        }
-      }
-    } finally {
-      await capturer.stop();
-    }
+    const { baselineRoot, outcomes, failures } = await runBaseline({
+      urls: parseUrls(opts.urls),
+      viewports: parseViewports(opts.viewports),
+      root: path.resolve(opts.out),
+      headless: !opts.headed,
+    });
 
     if (failures > 0) {
-      console.error(`\n[visual-check] ${failures} baseline capture(s) failed.`);
+      const saved = outcomes.length - failures;
+      console.error(
+        `\n[visual-check] ${failures} baseline capture(s) not saved (existing baselines kept); ${saved} saved to ${baselineRoot}.`,
+      );
       process.exit(1);
     }
     console.log(`\n[visual-check] Baselines saved to ${baselineRoot}`);
