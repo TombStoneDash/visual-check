@@ -131,9 +131,10 @@ export async function insertResults(
 
 /**
  * Mark prior approved baselines for (project, url, viewport, lane) as
- * unapproved, then insert the new one. The uniqueness constraint on the
- * table is (project, url, viewport, lane_os, lane_runner, approved) so
- * we cannot leave two approved rows behind.
+ * unapproved, then insert the new one. A partial unique index (migration
+ * 0003) allows one approved row per (project, url, viewport, lane_os,
+ * lane_runner), so we cannot leave two approved rows behind; unapproved
+ * rows are kept as history.
  */
 export async function upsertBaseline(
   projectId: string,
