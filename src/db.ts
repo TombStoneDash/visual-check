@@ -242,6 +242,8 @@ export async function getRun(
 
 function deriveRunVerdict(run: RunReport): string {
   const s = run.summary;
+  // Same rule as the CLI's reportVerdict: a run that checked nothing is an error, not a pass.
+  if (s.total === 0) return 'error';
   if (s.errors > 0) return 'error';
   if (s.failed > 0) return 'fail';
   if (s.needs_baseline > 0) return 'needs_baseline';
