@@ -9,7 +9,6 @@
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import { Capturer, sanitizeCaptureError, urlToSlug } from '../capture.js';
-import { baselineStorageKey } from '../baseline-key.js';
 import { diffPngs, fileExists } from '../diff.js';
 import { buildTargetResult } from '../checks.js';
 import { buildReport, formatSummary, formatTargetLine, writeJsonReport } from '../report.js';
@@ -78,6 +77,8 @@ export async function runDeployGate(opts: DeployGateOptions): Promise<DeployGate
     basePath: string;
     diffPath: string;
     hasBaseline: boolean;
+    /** Storage key of the approved baseline that was downloaded, if any. */
+    baselineKey: string | null;
   };
   const targets: Target[] = [];
   for (const url of opts.urls) {
@@ -87,6 +88,7 @@ export async function runDeployGate(opts: DeployGateOptions): Promise<DeployGate
       const basePath = path.join(baselineRoot, slug, `${vp.name}.png`);
       const diffPath = path.join(diffRoot, slug, `${vp.name}.png`);
       let hasBaseline = false;
+      let baselineKey: string | null = null;
       try {
         const resolved = await storage.downloadBaseline(
           opts.projectId,
@@ -96,12 +98,13 @@ export async function runDeployGate(opts: DeployGateOptions): Promise<DeployGate
           basePath,
         );
         hasBaseline = resolved !== null;
+        baselineKey = resolved?.storagePath ?? null;
       } catch (e) {
         log(
           `  [warn] baseline fetch failed for ${url} @ ${vp.name}: ${e instanceof Error ? e.message : String(e)}`,
         );
       }
-      targets.push({ url, vp, capPath, basePath, diffPath, hasBaseline });
+      targets.push({ url, vp, capPath, basePath, diffPath, hasBaseline, baselineKey });
     }
   }
 
@@ -234,8 +237,11 @@ export async function runDeployGate(opts: DeployGateOptions): Promise<DeployGate
         );
       }
     }
-    if (t.hasBaseline) {
-      storageKeys.baselines[k] = baselineStorageKey(opts.projectId, t.url, t.vp.name, opts.lane);
+    // Record the key the baseline was actually read from. Rows promoted
+    // before lane-scoped keys (#30) live under a different key than
+    // baselineStorageKey() would build today.
+    if (t.baselineKey) {
+      storageKeys.baselines[k] = t.baselineKey;
     }
   }
 
