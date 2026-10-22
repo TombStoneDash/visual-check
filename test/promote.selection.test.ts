@@ -14,7 +14,8 @@ vi.mock('../src/db.js', () => ({
   getRun: vi.fn(),
 }));
 
-import { runPromote } from '../src/commands/promote.js';
+import { resolvePromoteSelection, runPromote } from '../src/commands/promote.js';
+import { UsageError } from '../src/cli-args.js';
 import * as db from '../src/db.js';
 import { BaselineLane } from '../src/types.js';
 
@@ -142,5 +143,52 @@ describe('runPromote selection validation', () => {
 
     expect(result.promoted).toHaveLength(2);
     expect(result.skipped).toHaveLength(0);
+  });
+});
+
+describe('resolvePromoteSelection (--targets / --select)', () => {
+  it('treats --select on its own as --targets selected (it was silently ignored before)', () => {
+    expect(resolvePromoteSelection(undefined, 'https://x.io@mobile, https://x.io/a@desktop')).toEqual({
+      targets: 'selected',
+      selected: [
+        { url: 'https://x.io', viewport: 'mobile' },
+        { url: 'https://x.io/a', viewport: 'desktop' },
+      ],
+    });
+  });
+
+  it('defaults to all when neither flag is given', () => {
+    expect(resolvePromoteSelection(undefined, undefined)).toEqual({ targets: 'all' });
+    expect(resolvePromoteSelection('all', undefined)).toEqual({ targets: 'all' });
+  });
+
+  it('rejects an unknown --targets value instead of skipping every target', () => {
+    expect(() => resolvePromoteSelection('selcted', 'https://x.io@mobile')).toThrow(UsageError);
+    expect(() => resolvePromoteSelection('selcted', undefined)).toThrow(/Invalid --targets: selcted/);
+    // The README used to show url@viewport pairs passed to --targets.
+    expect(() => resolvePromoteSelection('https://x.io@mobile', undefined)).toThrow(UsageError);
+  });
+
+  it('rejects --targets all combined with --select', () => {
+    expect(() => resolvePromoteSelection('all', 'https://x.io@mobile')).toThrow(/cannot be combined/);
+  });
+
+  it('rejects selected with nothing selected and malformed pairs', () => {
+    expect(() => resolvePromoteSelection('selected', undefined)).toThrow(UsageError);
+    expect(() => resolvePromoteSelection(undefined, ' , ')).toThrow(UsageError);
+    expect(() => resolvePromoteSelection(undefined, 'https://x.io')).toThrow(/Invalid --select entry/);
+    expect(() => resolvePromoteSelection(undefined, 'https://x.io@')).toThrow(/Invalid --select entry/);
+    expect(() => resolvePromoteSelection(undefined, '@mobile')).toThrow(/Invalid --select entry/);
+  });
+
+  it('promotes only the selected pair when --select is given without --targets', async () => {
+    mockRun([
+      { url: 'https://x.io', viewport: 'mobile', verdict: 'fail', screenshot_path: 'k1.png' },
+      { url: 'https://x.io', viewport: 'desktop', verdict: 'fail', screenshot_path: 'k2.png' },
+    ]);
+    const sel = resolvePromoteSelection(undefined, 'https://x.io@desktop');
+    const result = await runPromote({ runId: 'vc_ok', ...sel, acceptFail: true, log: () => {} });
+    expect(result.promoted.map((p) => p.viewport)).toEqual(['desktop']);
+    expect(result.skipped).toEqual([{ url: 'https://x.io', viewport: 'mobile', reason: 'not selected' }]);
   });
 });

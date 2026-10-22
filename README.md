@@ -494,11 +494,11 @@ Exit codes: `0` (pass/warn), `1` (fail, or warn with `--strict-warn`), `2` (need
 ```bash
 node dist/cli.js promote \
   --run-id vc_abc123 \
-  --targets "https://mysite.com@mobile,https://mysite.com@desktop" \
+  --select "https://mysite.com@mobile,https://mysite.com@desktop" \
   --approved-by HT
 ```
 
-Sets the results from `run-id` as the new approved baselines.
+Sets the results from `run-id` as the new approved baselines. `--select` limits promotion to the listed `url@viewport` pairs (it implies `--targets selected`); without it, every accepted target in the run is promoted (`--targets all`). An unknown `--targets` value, `--targets all` together with `--select`, or a malformed pair exits `3` without promoting anything.
 
 ### Development
 

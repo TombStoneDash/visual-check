@@ -46,6 +46,8 @@ export interface DeployGateOptions {
   htmlOutPath?: string;
   receiptOutPath?: string;
   log?: (line: string) => void;
+  /** Receives `[warn]` lines. Defaults to `log` when given, else stderr (never silenced by `quiet`). */
+  warn?: (line: string) => void;
 }
 
 export interface DeployGateResult {
@@ -58,6 +60,9 @@ const DEFAULT_TTL = 60 * 60 * 24 * 7; // 7 days
 
 export async function runDeployGate(opts: DeployGateOptions): Promise<DeployGateResult> {
   const log = opts.log ?? (opts.quiet ? () => {} : (l) => console.log(l));
+  // Warnings (fetch, upload, persist, alert failures) go to stderr even with --quiet:
+  // a gate that exits 0 while its run was never stored must still say so.
+  const warn = opts.warn ?? opts.log ?? ((l) => console.error(l));
   const root = path.resolve(opts.outRoot);
   const baselineRoot = path.join(root, 'baselines');
   const dateStr = new Date().toISOString().slice(0, 10);
@@ -97,7 +102,7 @@ export async function runDeployGate(opts: DeployGateOptions): Promise<DeployGate
         );
         hasBaseline = resolved !== null;
       } catch (e) {
-        log(
+        warn(
           `  [warn] baseline fetch failed for ${url} @ ${vp.name}: ${e instanceof Error ? e.message : String(e)}`,
         );
       }
@@ -215,7 +220,7 @@ export async function runDeployGate(opts: DeployGateOptions): Promise<DeployGate
         );
         storageKeys.screenshots[k] = k1;
       } catch (e) {
-        log(
+        warn(
           `  [warn] upload screenshot failed for ${t.url} @ ${t.vp.name}: ${e instanceof Error ? e.message : String(e)}`,
         );
       }
@@ -229,7 +234,7 @@ export async function runDeployGate(opts: DeployGateOptions): Promise<DeployGate
         );
         storageKeys.diffs[k] = k2;
       } catch (e) {
-        log(
+        warn(
           `  [warn] upload diff failed for ${t.url} @ ${t.vp.name}: ${e instanceof Error ? e.message : String(e)}`,
         );
       }
@@ -248,7 +253,7 @@ export async function runDeployGate(opts: DeployGateOptions): Promise<DeployGate
     );
     storageKeys.htmlReport = htmlReportKey;
   } catch (e) {
-    log(
+    warn(
       `  [warn] upload HTML report failed: ${e instanceof Error ? e.message : String(e)}`,
     );
   }
@@ -267,7 +272,7 @@ export async function runDeployGate(opts: DeployGateOptions): Promise<DeployGate
     await db.insertRun(report, opts.projectId, htmlReportKey);
     await db.insertResults(report.run_id, report.results, storageKeys);
   } catch (e) {
-    log(`  [warn] db persist failed: ${e instanceof Error ? e.message : String(e)}`);
+    warn(`  [warn] db persist failed: ${e instanceof Error ? e.message : String(e)}`);
   }
 
   // --- Step 7: sign the HTML report URL and (maybe) alert ------------------
@@ -280,7 +285,7 @@ export async function runDeployGate(opts: DeployGateOptions): Promise<DeployGate
         ttl,
       );
     } catch (e) {
-      log(
+      warn(
         `  [warn] sign URL failed: ${e instanceof Error ? e.message : String(e)}`,
       );
     }
@@ -292,7 +297,7 @@ export async function runDeployGate(opts: DeployGateOptions): Promise<DeployGate
       await alerts.sendTelegramAlert(report, signedReportUrl);
       alertSent = true;
     } catch (e) {
-      log(
+      warn(
         `  [warn] Telegram alert failed: ${e instanceof Error ? e.message : String(e)}`,
       );
     }
