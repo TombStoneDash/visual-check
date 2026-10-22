@@ -26,13 +26,32 @@ export const V1_CHECK_MODES: Record<string, CheckMode> = {
 // -- Check 1: Pixel diff -----------------------------------------------------
 
 /**
+ * Decimal places needed so a rounded diff percentage lands on the same side
+ * of the threshold as the exact value. 3 is enough almost always; near the
+ * threshold (130 changed pixels on 1440x900 is 0.01003% against 0.01%) more
+ * digits keep a failing target from reporting a diff equal to the threshold.
+ */
+function verdictSafeDigits(pct: number, thresholdPct?: number): number {
+  if (thresholdPct === undefined || !Number.isFinite(thresholdPct)) return 3;
+  const fails = pct > thresholdPct;
+  for (let digits = 3; digits < 12; digits++) {
+    const rounded = Number(pct.toFixed(digits));
+    // A real diff that rounds to 0 is reported unrounded (or as "<0.001%").
+    const reported = rounded === 0 && pct > 0 ? pct : rounded;
+    if (reported > thresholdPct === fails) return digits;
+  }
+  return 12;
+}
+
+/**
  * Format a diff percentage for display. A rounded-to-zero value that is
  * still a real (>0) difference reads as "<0.001%" instead of "0.000%" so a
- * failing check never claims there was no difference.
+ * failing check never claims there was no difference. With a threshold, the
+ * shown value never sits on the wrong side of it.
  */
-export function formatDiffPercentage(pct: number): string {
+export function formatDiffPercentage(pct: number, thresholdPct?: number): string {
   if (pct === 0) return '0%';
-  const rounded = pct.toFixed(3);
+  const rounded = pct.toFixed(verdictSafeDigits(pct, thresholdPct));
   if (Number(rounded) === 0) return '<0.001%';
   return `${rounded}%`;
 }
@@ -40,10 +59,11 @@ export function formatDiffPercentage(pct: number): string {
 /**
  * Round a diff percentage for numeric reporting (`metric`, `diff_percentage`),
  * keeping the unrounded value when rounding would mask a real (>0) difference
- * as exactly zero.
+ * as exactly zero, and keeping extra digits when 3 would flip it across the
+ * threshold.
  */
-function roundDiffPercentage(pct: number): number {
-  const rounded = Number(pct.toFixed(3));
+function roundDiffPercentage(pct: number, thresholdPct?: number): number {
+  const rounded = Number(pct.toFixed(verdictSafeDigits(pct, thresholdPct)));
   return rounded === 0 && pct > 0 ? pct : rounded;
 }
 
@@ -102,7 +122,7 @@ export function checkPixelDiff(
     };
   }
   const pass = diff.diffPercentage <= thresholdPct;
-  const formatted = formatDiffPercentage(diff.diffPercentage);
+  const formatted = formatDiffPercentage(diff.diffPercentage, thresholdPct);
   const countSuffix =
     !pass && diff.diffPixels >= 0
       ? ` (${diff.diffPixels.toLocaleString('en-US')} of ${diff.totalPixels.toLocaleString('en-US')} pixels)`
@@ -114,7 +134,7 @@ export function checkPixelDiff(
     message: pass
       ? `pixel diff ${formatted} within threshold`
       : `pixel diff ${formatted} > ${thresholdPct}%${countSuffix}`,
-    metric: roundDiffPercentage(diff.diffPercentage),
+    metric: roundDiffPercentage(diff.diffPercentage, thresholdPct),
     threshold: thresholdPct,
     blocking: !pass,
   };
@@ -292,6 +312,7 @@ export function buildTargetResult(params: {
 
   const { verdict, reasons } = aggregateVerdict(checks, baselineExists);
   const pass = verdict === 'pass' || verdict === 'warn';
+  const changedRegion = diff && !diff.dimensionMismatch ? (diff.changedRegion ?? null) : null;
 
   return {
     url: cap.url,
@@ -299,11 +320,13 @@ export function buildTargetResult(params: {
     verdict,
     pass,
     status: cap.httpStatus,
-    diff_percentage: diff && !diff.dimensionMismatch ? roundDiffPercentage(diff.diffPercentage) : null,
+    diff_percentage:
+      diff && !diff.dimensionMismatch ? roundDiffPercentage(diff.diffPercentage, pixelDiffThresholdPct) : null,
     screenshot: cap.screenshotPath,
     baseline: baselineExists ? baselinePath : null,
     diff_image: diff?.diffImagePath ?? null,
-    changed_region: diff && !diff.dimensionMismatch ? (diff.changedRegion ?? null) : null,
+    changed_region: changedRegion,
+    ...(changedRegion && diff ? { image_size: { ...diff.baselineDimensions } } : {}),
     console_errors: cap.consoleErrors.length,
     load_time_ms: cap.loadTimeMs,
     reasons,

@@ -118,6 +118,31 @@ describe('renderHtmlReport', () => {
     expect(html).toContain('changed region: x=39, y=84, 39×84px');
   });
 
+  it('places the region box using the compared image size for a custom viewport size', async () => {
+    const out = path.join(tmp, 'report-region-custom.html');
+    // desktop:1280x800, bottom-right quarter changed. Dividing by the default
+    // 1440x900 would draw it at 44.44%; the real image size gives 50%.
+    const regionTarget: TargetResult = {
+      ...target,
+      viewport: 'desktop',
+      changed_region: { x: 640, y: 400, width: 640, height: 400 },
+      image_size: { width: 1280, height: 800 },
+    };
+    const report = buildReport({
+      urls: [target.url],
+      viewports: [{ name: 'desktop', width: 1280, height: 800 }],
+      pixelDiffThreshold: 5,
+      loadTimeWarnMs: 3000,
+      results: [regionTarget],
+      lane,
+    });
+    await renderHtmlReport(report, out);
+    const html = await fs.readFile(out, 'utf8');
+
+    expect(html).toContain('left:50.00%;top:50.00%;width:50.00%;height:50.00%');
+    expect(html).not.toContain('44.44%');
+  });
+
   it('omits the region overlay when there is no changed region', async () => {
     const out = path.join(tmp, 'report-no-region.html');
     const report = buildReport({

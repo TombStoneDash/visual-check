@@ -57,17 +57,22 @@ interface OverlayBox {
 /**
  * Convert a pixel-space changed_region into a percentage box so it overlays
  * correctly regardless of how large the browser renders the screenshot.
- * Only works for the fixed named viewports V1 supports.
+ * Uses the compared image size when the result carries it (custom viewport
+ * sizes such as desktop:1280x800), else the named viewport's default size.
  */
-function regionOverlayBox(region: ChangedRegion | null | undefined, viewportName: string): OverlayBox | null {
+function regionOverlayBox(
+  region: ChangedRegion | null | undefined,
+  viewportName: string,
+  imageSize?: { width: number; height: number },
+): OverlayBox | null {
   if (!region) return null;
-  const vp = DEFAULT_VIEWPORTS.find((v) => v.name === viewportName);
-  if (!vp || vp.width <= 0 || vp.height <= 0) return null;
+  const size = imageSize ?? DEFAULT_VIEWPORTS.find((v) => v.name === viewportName);
+  if (!size || size.width <= 0 || size.height <= 0) return null;
   return {
-    left: (region.x / vp.width) * 100,
-    top: (region.y / vp.height) * 100,
-    width: (region.width / vp.width) * 100,
-    height: (region.height / vp.height) * 100,
+    left: (region.x / size.width) * 100,
+    top: (region.y / size.height) * 100,
+    width: (region.width / size.width) * 100,
+    height: (region.height / size.height) * 100,
   };
 }
 
@@ -78,7 +83,7 @@ async function renderTarget(t: TargetResult, idx: number): Promise<string> {
     toDataUri(t.screenshot),
     toDataUri(t.diff_image),
   ]);
-  const regionBox = regionOverlayBox(t.changed_region, t.viewport);
+  const regionBox = regionOverlayBox(t.changed_region, t.viewport, t.image_size);
   const cellImg = (uri: string | null, label: string, overlay?: OverlayBox | null): string => {
     if (!uri) {
       return `<figure class="missing"><figcaption>${label}</figcaption><div class="placeholder">—</div></figure>`;
