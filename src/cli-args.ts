@@ -1,3 +1,4 @@
+import { urlToSlug } from './capture.js';
 import { DEFAULT_VIEWPORTS, ViewportSpec } from './types.js';
 
 export class UsageError extends Error {
@@ -25,7 +26,30 @@ export function parseUrls(raw: string): string[] {
     seen.add(key);
     urls.push(normalized);
   }
+  assertDistinctTargetSlugs(urls);
   return urls;
+}
+
+/**
+ * Captures, baselines, diffs and promoted storage keys are all named by
+ * urlToSlug(url). That slug drops the scheme and folds "." and "/" into
+ * "-" and "_", so two different URLs can share one file (http:// vs
+ * https://, my-site.com vs my.site.com, /a/b vs /a_b). Checking both in one
+ * run would compare each against the other's baseline, so refuse up front.
+ */
+export function assertDistinctTargetSlugs(urls: string[]): void {
+  const bySlug = new Map<string, string>();
+  for (const url of urls) {
+    const slug = urlToSlug(url);
+    const other = bySlug.get(slug);
+    if (other !== undefined) {
+      throw new UsageError(
+        `${other} and ${url} would share one baseline file ("${slug}"), so each would be compared ` +
+          'against the other\'s screenshot. Check them in separate runs with separate --out folders.',
+      );
+    }
+    bySlug.set(slug, url);
+  }
 }
 
 const VIEWPORT_TOKEN_RE = /^([^:]+):(\d+)x(\d+)$/;

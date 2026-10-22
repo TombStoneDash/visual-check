@@ -18,10 +18,9 @@ describe('parseUrls dedupe and validation', () => {
     ]);
   });
 
-  it('does not collapse http and https on the same host', () => {
-    expect(parseUrls('http://a.example,https://a.example')).toEqual([
-      'http://a.example', 'https://a.example',
-    ]);
+  it('does not silently collapse http and https on the same host (they would share one baseline file)', () => {
+    expect(() => parseUrls('http://a.example,https://a.example')).toThrow(UsageError);
+    expect(() => parseUrls('http://a.example,https://a.example')).toThrow('would share one baseline file');
   });
 
   it('throws UsageError naming the raw invalid entry', () => {
