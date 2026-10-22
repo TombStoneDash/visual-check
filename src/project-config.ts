@@ -9,6 +9,7 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { assertDistinctTargetSlugs } from './cli-args.js';
 import { DEFAULT_VIEWPORTS, ViewportSpec } from './types.js';
 
 export interface ProjectConfigRoute {
@@ -53,6 +54,13 @@ function validateConfig(raw: unknown, filePath: string): ProjectConfigInput {
     if (typeof route.path !== 'string' || !route.path.startsWith('/')) {
       throw new Error(`${filePath}: routes[${index}].path must be a string starting with "/"`);
     }
+    // "//host/x" and "/\\host/x" are protocol-relative: they resolve to
+    // another host, not to a path under the base URL.
+    if (/^\/[\/\\]/.test(route.path)) {
+      throw new Error(
+        `${filePath}: routes[${index}].path must be a path on the base URL, not "${route.path}" (a leading "//" points at another host)`,
+      );
+    }
   });
   if (raw.baseUrl !== undefined && !isAbsoluteHttpUrl(raw.baseUrl)) {
     throw new Error(`${filePath}: baseUrl must be an absolute http:// or https:// URL`);
@@ -96,6 +104,17 @@ function isUsableViewport(value: unknown): value is ViewportSpec {
   return known && positive(value.width) && positive(value.height);
 }
 
+/** Every capture path is keyed on `${viewport.name}.png`, so a name may appear only once. */
+function firstRepeatedViewportName(viewports: unknown[]): string | undefined {
+  const seen = new Set<string>();
+  for (const vp of viewports) {
+    if (!isPlainObject(vp) || typeof vp.name !== 'string') continue;
+    if (seen.has(vp.name)) return vp.name;
+    seen.add(vp.name);
+  }
+  return undefined;
+}
+
 export function resolveConfigTargets(
   config: ProjectConfigInput,
   baseUrl: string,
@@ -108,14 +127,23 @@ export function resolveConfigTargets(
   const urls: string[] = [];
   const seen = new Set<string>();
   for (const route of config.routes) {
-    const href = new URL(route.path, base).href;
+    const resolved = new URL(route.path, base);
+    if (resolved.origin !== base.origin) {
+      throw new Error(`route "${route.id}": path ${route.path} resolves to ${resolved.origin}, not ${base.origin}`);
+    }
+    const href = resolved.href;
     if (seen.has(href)) continue;
     seen.add(href);
     urls.push(href);
   }
+  assertDistinctTargetSlugs(urls);
 
+  const repeatedViewport = Array.isArray(config.viewports) ? firstRepeatedViewportName(config.viewports) : undefined;
   const usableConfigViewports =
-    Array.isArray(config.viewports) && config.viewports.length > 0 && config.viewports.every(isUsableViewport);
+    Array.isArray(config.viewports) &&
+    config.viewports.length > 0 &&
+    config.viewports.every(isUsableViewport) &&
+    repeatedViewport === undefined;
   const viewports = usableConfigViewports ? (config.viewports as ViewportSpec[]) : DEFAULT_VIEWPORTS;
 
   const topLevel = Object.keys(config)
@@ -130,7 +158,11 @@ export function resolveConfigTargets(
     });
 
   const viewportWarnings: string[] = [];
-  if (config.viewports !== undefined && !usableConfigViewports) {
+  if (config.viewports !== undefined && !usableConfigViewports && repeatedViewport !== undefined) {
+    viewportWarnings.push(
+      `viewports: not used ("${repeatedViewport}" is listed more than once, and both sizes would write the same ${repeatedViewport}.png); using ${DEFAULT_VIEWPORTS.map((v) => v.name).join(', ')}`,
+    );
+  } else if (config.viewports !== undefined && !usableConfigViewports) {
     const names = DEFAULT_VIEWPORTS.map((v) => v.name);
     const namesWithOr = names.length > 1 ? `${names.slice(0, -1).join(', ')} or ${names[names.length - 1]}` : names[0];
     viewportWarnings.push(
