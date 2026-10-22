@@ -62,10 +62,18 @@ runs:
         echo "work=$RUNNER_TEMP/visual-check" >> "$GITHUB_OUTPUT"
         if [ "$MODE" = gate ]; then
           if [ -z "$PROJECT" ]; then
-            PROJECT=$(node --input-type=module -e "const m=await import(process.argv[1]);console.log(m.default.projectId)" "$(realpath "$CONFIG")" 2>/dev/null || true)
+            # The projectId only picks the threshold, so a config that cannot be read is
+            # fatal only when threshold-pct was not given either.
+            PROJECT=$(node "$VC/scripts/gate-project.mjs" "$CONFIG") || { [ -n "$THRESHOLD" ] || exit 3; PROJECT=""; }
           fi
           echo "project=$PROJECT" >> "$GITHUB_OUTPUT"
-          echo "threshold=$(node "$VC/scripts/gate-threshold.mjs" "$PROJECT" "$THRESHOLD")" >> "$GITHUB_OUTPUT"
+          # A failing $(...) inside echo would not stop this step, and Gate would then
+          # fail with a confusing "Invalid --threshold:" instead of the real cause.
+          if ! threshold=$(node "$VC/scripts/gate-threshold.mjs" "$PROJECT" "$THRESHOLD"); then
+            echo "::error::Visual Check has no threshold for project '$PROJECT': add it to thresholds.json or set threshold-pct"
+            exit 3
+          fi
+          echo "threshold=$threshold" >> "$GITHUB_OUTPUT"
         fi
         node "$VC/dist/cli.js" config-targets "${args[@]}" > "$RUNNER_TEMP/vc-targets.txt"
         echo "urls=$(sed -n 's/^--urls=//p' "$RUNNER_TEMP/vc-targets.txt")" >> "$GITHUB_OUTPUT"
