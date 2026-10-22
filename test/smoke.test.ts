@@ -8,8 +8,9 @@
  *   3. Cover buildAssertions + terminalStateForAssertions directly.
  *   4. Cover writeJsonReport round-trip.
  */
-import { describe, it, expect, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { promises as fs } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 
 // --- 1. Main entry point imports without throwing ----------------------------
@@ -218,7 +219,14 @@ describe('terminalStateForAssertions', () => {
 
 // --- 5. writeJsonReport round-trip -------------------------------------------
 
-const tmpDir = path.resolve('/tmp/visual-check-smoke-test');
+// Per-run dir under os.tmpdir(): a fixed /tmp path collided between
+// concurrent runs (one run's cleanup deleted the other's file) and is not
+// writable in sandboxed environments.
+let tmpDir: string;
+
+beforeAll(async () => {
+  tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'visual-check-smoke-test-'));
+});
 
 afterAll(async () => {
   await fs.rm(tmpDir, { recursive: true, force: true });
