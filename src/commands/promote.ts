@@ -28,7 +28,9 @@ export interface PromoteOptions {
    * Accept-fail mode: also accept `fail` targets. Used to re-baseline
    * after an intentional UI change that the gate correctly caught.
    * `error` verdicts are still rejected — those are infrastructure
-   * problems (capture failed), not approvable changes.
+   * problems (capture failed), not approvable changes — and so is any
+   * target whose page did not load (HTTP status outside 2xx/3xx, or no
+   * response): its screenshot is an error page, not a UI change.
    */
   acceptFail?: boolean;
   log?: (line: string) => void;
@@ -37,6 +39,18 @@ export interface PromoteOptions {
 export interface PromoteResult {
   promoted: Array<{ url: string; viewport: string; storageKey: string }>;
   skipped: Array<{ url: string; viewport: string; reason: string }>;
+}
+
+/**
+ * Why a stored result's HTTP status makes its screenshot unusable as a
+ * baseline, or null when it is usable. A row without the column (undefined)
+ * is trusted to the verdict, as before.
+ */
+export function unhealthyHttpReason(httpStatus: number | null | undefined): string | null {
+  if (httpStatus === undefined) return null;
+  if (httpStatus === null) return 'no HTTP response (page did not load)';
+  if (httpStatus >= 200 && httpStatus < 400) return null;
+  return `HTTP ${httpStatus} (page did not load)`;
 }
 
 async function downloadScreenshotTo(
@@ -93,6 +107,12 @@ export async function runPromote(opts: PromoteOptions): Promise<PromoteResult> {
         (opts.acceptFail === true && r.verdict === 'fail');
       if (!accepted) {
         skipped.push({ url: r.url, viewport: r.viewport, reason: `verdict=${r.verdict}` });
+        continue;
+      }
+      const httpReason = unhealthyHttpReason(r.http_status);
+      if (httpReason) {
+        skipped.push({ url: r.url, viewport: r.viewport, reason: httpReason });
+        log(`  ✗ ${r.url} @ ${r.viewport}: ${httpReason}`);
         continue;
       }
       if (!r.screenshot_path) {
