@@ -127,6 +127,7 @@ export function sanitizeConsoleDiagnostic(value: unknown): ConsoleDiagnosticCate
  *   - wait for fonts before capture
  *   - fixed locale, timezone, DPR
  *   - reduced motion
+ *   - <video> paused on its first frame
  *
  * V1 only captures the above-the-fold viewport (not fullPage) to keep
  * baselines stable against pages that lazy-load content on scroll.
@@ -222,6 +223,29 @@ export class Capturer {
         if (document.fonts && document.fonts.ready) {
           await document.fonts.ready;
         }
+      });
+
+      // Freeze <video>: the CSS above and reducedMotion don't stop playback,
+      // so an autoplaying hero would be captured at a different frame on
+      // every run. Pause and rewind to the first frame; a video that never
+      // started keeps showing its poster. Live streams can't seek.
+      await page.evaluate(async () => {
+        const videos = Array.from(document.querySelectorAll('video'));
+        await Promise.all(
+          videos.map(
+            (v) =>
+              new Promise<void>((resolve) => {
+                v.pause();
+                if (v.readyState === 0 || v.srcObject || v.currentTime === 0) {
+                  resolve();
+                  return;
+                }
+                v.addEventListener('seeked', () => resolve(), { once: true });
+                setTimeout(() => resolve(), 1_000);
+                v.currentTime = 0;
+              }),
+          ),
+        );
       });
 
       // Give layout one frame to settle after style injection
