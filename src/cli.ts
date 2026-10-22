@@ -153,18 +153,35 @@ Exit codes (run, compare):
 program
   .command('baseline')
   .description('Capture baseline screenshots for the given URLs × viewports')
-  .requiredOption('--urls <urls>', 'Comma-separated URLs')
-  .option(
-    '--viewports <list>',
-    'Comma-separated viewport names (mobile,tablet,desktop)',
-    'mobile,tablet,desktop',
-  )
+  .option('--urls <urls>', 'Comma-separated URLs (required unless --config is given)')
+  .option('--config <path>', CONFIG_HELP)
+  .option('--base-url <url>', BASE_URL_HELP)
+  .option('--viewports <list>', VIEWPORTS_HELP, 'mobile,tablet,desktop')
+  .option('--dry-run', 'Print the resolved targets (url @ viewport WxH) and exit 0 without a browser', false)
   .option('--out <dir>', 'Workspace root directory', '.')
   .option('--headed', 'Run Chromium headed (for debugging)', false)
-  .action(async (opts: { urls: string; viewports?: string; out: string; headed?: boolean }) => {
+  .action(async (opts: {
+    urls?: string;
+    config?: string;
+    baseUrl?: string;
+    viewports?: string;
+    dryRun?: boolean;
+    out: string;
+    headed?: boolean;
+  }, cmd: Command) => {
+    const { urls, viewports } = await resolveTargets(cmd, opts, { urlsRequired: true });
+
+    if (opts.dryRun) {
+      console.log(`[visual-check] baseline (dry run): ${urls.length} URL(s) × ${viewports.length} viewport(s)`);
+      for (const url of urls) {
+        for (const vp of viewports) console.log(`  ${url} @ ${vp.name} ${vp.width}x${vp.height}`);
+      }
+      process.exit(0);
+    }
+
     const { baselineRoot, outcomes, failures } = await runBaseline({
-      urls: parseUrls(opts.urls),
-      viewports: parseViewports(opts.viewports),
+      urls,
+      viewports,
       root: path.resolve(opts.out),
       headless: !opts.headed,
     });

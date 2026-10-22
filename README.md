@@ -159,7 +159,7 @@ for a full walkthrough.
 
 ### Project config
 
-`run`, `compare` and `deploy-gate` read the same project config as
+`baseline`, `run`, `compare` and `deploy-gate` read the same project config as
 `config-targets` (`--config <path>`, JSON or `.mjs`/`.js`; `.ts` configs are
 not loaded). The config supplies the URL list and the viewports, so a repo can
 commit one file instead of repeating flags:
@@ -173,16 +173,16 @@ node dist/cli.js run \
 
 | Config field | Applied by | Notes |
 |--------------|-----------|-------|
-| `routes[].path` | `config-targets`, `run`, `deploy-gate`, `compare` (first route only) | Resolved against `--base-url`, else the config `baseUrl`; neither present is a usage error. Duplicates collapse. |
-| `baseUrl` | `config-targets` (fallback), `run`, `compare`, `deploy-gate` | Optional absolute http(s) URL. `--base-url` wins over it. |
-| `viewports[]` | `config-targets`, `run`, `compare`, `deploy-gate` | Known names (`mobile`, `tablet`, `desktop`) at any positive size; the size is captured as given. Unusable lists fall back to the defaults with one warning. |
+| `routes[].path` | `config-targets`, `baseline`, `run`, `deploy-gate`, `compare` (first route only) | Resolved against `--base-url`, else the config `baseUrl`; neither present is a usage error. Duplicates collapse. |
+| `baseUrl` | `config-targets` (fallback), `baseline`, `run`, `compare`, `deploy-gate` | Optional absolute http(s) URL. `--base-url` wins over it. |
+| `viewports[]` | `config-targets`, `baseline`, `run`, `compare`, `deploy-gate` | Known names (`mobile`, `tablet`, `desktop`) at any positive size; the size is captured as given. Unusable lists fall back to the defaults with one warning. |
 | `projectId` | all | Required, identifies the config. `deploy-gate` still takes `--project`. |
 | everything else (`checks`, `themes`, `lane`, `waitFor`, `maskSelectors`, ...) | none yet | Reported once each on stderr as `not applied by config-targets yet`, never silently dropped. |
 
 Precedence: an explicit `--urls` or `--viewports` flag beats the config value
 and prints one stderr notice (`[visual-check] notice: --urls overrides config routes`).
 Without `--config` every command behaves exactly as before (`--urls` is still
-required). `run --dry-run` prints the resolved `url @ viewport WxH` list and
+required). `baseline --dry-run` and `run --dry-run` print the resolved `url @ viewport WxH` list and
 exits 0 without starting a browser. `config-targets` prints `--viewports=desktop:1280x800`
 for a custom size, so its output round-trips into the other commands.
 
@@ -393,10 +393,17 @@ node dist/cli.js baseline \
 
 | Flag | Default | Notes |
 |------|---------|-------|
-| `--urls` | required | Comma-separated. Bare hostnames get `https://` auto-prefixed. |
-| `--viewports` | `mobile,tablet,desktop` | Names, or `name:WIDTHxHEIGHT` for a custom size. |
+| `--urls` | required unless `--config` | Comma-separated. Bare hostnames get `https://` auto-prefixed. Overrides the config routes. |
+| `--config <path>` | — | Project config (see "Project config"). Seeds exactly the targets `run --config` checks. |
+| `--base-url <url>` | config `baseUrl` | Base the config routes resolve against. |
+| `--viewports` | `mobile,tablet,desktop` | Names, or `name:WIDTHxHEIGHT` for a custom size. Overrides the config viewports. |
+| `--dry-run` | off | Print the resolved targets and exit 0, no browser. |
 | `--out` | `.` | Workspace root. Baselines go under `<out>/baselines/`. |
 | `--headed` | off | Show the browser window (debugging). |
+
+Only captures that finish with HTTP 2xx/3xx are saved. Anything else is
+listed as `NOT SAVED` with the reason, the existing baseline for that target
+is kept, and the command exits 1.
 
 #### `run`
 

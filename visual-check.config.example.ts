@@ -1,6 +1,6 @@
 /**
- * Example project config. Read by `config-targets`, `run`, `compare` and
- * `deploy-gate` via `--config` (JSON or .mjs; .ts configs are not loaded):
+ * Example project config. Read by `config-targets`, `baseline`, `run`,
+ * `compare` and `deploy-gate` via `--config` (JSON or .mjs; .ts configs are not loaded):
  * `projectId`, `baseUrl`, `routes[].path` and `viewports` (custom sizes
  * included) are applied; every other key is reported as "not applied yet"
  * on stderr. See README "Project config" for the per-command table.

@@ -136,3 +136,42 @@ describe('compare and deploy-gate accept --config', () => {
     expect(result.stderr).toContain('does-not-exist.json');
   });
 });
+
+describe('baseline --config (no browser, --dry-run)', () => {
+  it('seeds the same targets run --config checks, custom sizes included', async () => {
+    const file = await writeJson('vc.json', {
+      projectId: 'demo',
+      baseUrl: 'https://cfg.example',
+      routes: [{ id: 'home', path: '/' }, { id: 'pricing', path: '/pricing' }],
+      viewports: [{ name: 'desktop', width: 1280, height: 800 }],
+    });
+    const baseline = run(['baseline', '--config', file, '--dry-run']);
+    const check = run(['run', '--config', file, '--dry-run']);
+    expect(baseline.status, baseline.stderr).toBe(0);
+    expect(baseline.stdout).toContain('baseline (dry run): 2 URL(s) × 1 viewport(s)');
+    expect(baseline.stdout).toContain('  https://cfg.example/ @ desktop 1280x800');
+    expect(baseline.stdout).toContain('  https://cfg.example/pricing @ desktop 1280x800');
+    const targets = (out: string) => out.split('\n').filter((l) => l.startsWith('  '));
+    expect(targets(baseline.stdout)).toEqual(targets(check.stdout));
+  });
+
+  it('--base-url and --urls behave as they do for run', () => {
+    const result = run([
+      'baseline', '--config', exampleConfig, '--base-url', 'https://example.com',
+      '--urls', 'https://override.example', '--dry-run',
+    ]);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain('  https://override.example @ mobile 390x844');
+    expect(result.stderr.match(/notice: --urls overrides config routes/g)).toHaveLength(1);
+  });
+
+  it('rejects --base-url without --config and still requires --urls without --config', () => {
+    const noConfig = run(['baseline', '--urls', 'https://example.com', '--base-url', 'https://example.com']);
+    expect(noConfig.status).toBe(USAGE_OR_FATAL_EXIT_CODE);
+    expect(noConfig.stderr).toContain('--base-url needs --config');
+
+    const noUrls = run(['baseline', '--dry-run']);
+    expect(noUrls.status).toBe(USAGE_OR_FATAL_EXIT_CODE);
+    expect(noUrls.stderr).toContain("required option '--urls <urls>' not specified");
+  });
+});
