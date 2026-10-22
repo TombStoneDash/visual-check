@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseNumberOption, parseUrls, parseViewports, UsageError } from '../src/cli-args.js';
+import { parseNumberOption, parseProjectId, parseUrls, parseViewports, UsageError } from '../src/cli-args.js';
 import { DEFAULT_VIEWPORTS } from '../src/types.js';
 
 describe('parseUrls', () => {
@@ -55,4 +55,20 @@ describe('parseNumberOption', () => {
       expect(() => parseNumberOption(flag, raw, rule)).toThrow(UsageError);
     }
   });
+});
+
+describe('parseProjectId', () => {
+  it.each(['trashalert', 'actorlab', 'lims.bot', 'my_app-2', 'A1'])('accepts %j', (raw) => {
+    expect(parseProjectId(raw)).toBe(raw);
+  });
+  it('trims surrounding whitespace', () => {
+    expect(parseProjectId('  trashalert ')).toBe('trashalert');
+  });
+  it.each(['', '   ', '.', '..', '../other', 'a/b', '/abs', 'acme corp', '-flag', '.hidden', 'a?b', 'a#b', 'x'.repeat(65)])(
+    'rejects %j as a usage error',
+    (raw) => {
+      expect(() => parseProjectId(raw)).toThrow(UsageError);
+      expect(() => parseProjectId(raw)).toThrow(/Invalid --project/);
+    },
+  );
 });

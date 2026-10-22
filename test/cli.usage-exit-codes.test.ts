@@ -51,6 +51,15 @@ describe('CLI usage exit codes without a browser', () => {
     expect(result.stdout).not.toContain('target(s)');
   });
 
+  it.each(['../other', 'a/b', '', 'acme corp'])('deploy-gate rejects --project %j before capture or Supabase', (project) => {
+    const result = run([
+      'deploy-gate', '--urls', 'example.com', '--project', project, '--deployment-url', 'https://example.com',
+    ]);
+    expect(result.status, result.stderr).toBe(3);
+    expect(result.stderr).toContain('Invalid --project');
+    expect(result.stdout).not.toContain('deploy-gate: project=');
+  });
+
   it('rejects an empty URL list', () => {
     const result = run(['run', '--urls', ',']);
     expect(result.status, result.stderr).toBe(3);
