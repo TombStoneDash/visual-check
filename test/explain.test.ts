@@ -229,8 +229,29 @@ describe('explainReport', () => {
     const explanation = explainReport(report);
     expect(explanation.sentences).toEqual([
       'example.com could not be checked on phone.',
-      'Blocked: the pages that did not load need fixing first.',
+      'Blocked: the pages that could not be checked need fixing first.',
     ]);
+  });
+
+  it('names both blocking kinds when one page did not load and another could not be checked', () => {
+    const results = [
+      tgt({ url: 'https://a.com', viewport: 'mobile', verdict: 'fail', status: 500, httpFail: true }),
+      tgt({ url: 'https://b.com', viewport: 'mobile', verdict: 'error' }),
+    ];
+    const report = buildReport({
+      urls: ['https://a.com', 'https://b.com'],
+      viewports: [MOBILE],
+      pixelDiffThreshold: 5,
+      loadTimeWarnMs: 3000,
+      results,
+      lane,
+    });
+
+    const explanation = explainReport(report);
+    expect(report.terminal_state).toBe('BLOCKED_WITH_OWNER');
+    expect(explanation.sentences.at(-1)).toBe(
+      'Blocked: the pages that did not load or could not be checked need fixing first.',
+    );
   });
 
   it('summarizes warnings in one sentence when nothing is worse', () => {
@@ -267,7 +288,7 @@ describe('explainReport', () => {
 
     const explanation = explainReport(report);
     expect(explanation.headline).toBe('Nothing was checked.');
-    expect(explanation.sentences).toEqual(['Blocked: the pages that did not load need fixing first.']);
+    expect(explanation.sentences).toEqual(['Blocked: nothing was checked.']);
   });
 
   it('uses singular wording for one fine page', () => {

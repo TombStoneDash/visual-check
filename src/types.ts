@@ -115,6 +115,9 @@ export interface TargetResult {
   diff_image: string | null;
   /** Bounding box of the changed pixels, when a diff was computed. */
   changed_region?: ChangedRegion | null;
+  /** Pixel size of the compared images; set with changed_region so the HTML
+   *  report can place the region box for custom viewport sizes too. */
+  image_size?: { width: number; height: number };
   console_errors: number;
   load_time_ms: number;
   reasons: string[];

@@ -149,3 +149,56 @@ describe('buildTargetResult — diff_percentage precision', () => {
     expect(t.diff_percentage).toBe(0);
   });
 });
+
+describe('pixel diff verdict agrees with the reported numbers near the threshold', () => {
+  // noui.bot threshold 0.01%; 130 changed pixels on 1440x900 is 0.01003%.
+  const edgeDiff = diff({
+    diffPercentage: (130 / 1_296_000) * 100,
+    diffPixels: 130,
+    totalPixels: 1_296_000,
+  });
+
+  it('a failing target never reports diff_percentage, metric or message equal to the threshold', () => {
+    const t = buildTargetResult({
+      cap: cap({ viewport: 'desktop' }),
+      diff: edgeDiff,
+      baselineExists: true,
+      baselinePath: '/tmp/baseline.png',
+      pixelDiffThresholdPct: 0.01,
+      loadTimeWarnMs: 3000,
+    });
+    const check = t.checks.find((c) => c.name === 'pixel_diff')!;
+    expect(t.verdict).toBe('fail');
+    expect(t.diff_percentage!).toBeGreaterThan(0.01);
+    expect(check.metric as number).toBeGreaterThan(0.01);
+    expect(check.message).toBe('pixel diff 0.01003% > 0.01% (130 of 1,296,000 pixels)');
+  });
+
+  it('a passing target never reports a value above the threshold', () => {
+    const check = checkPixelDiff(diff({ diffPercentage: 0.0105 }), 0.0105, true);
+    expect(check.status).toBe('pass');
+    expect(check.metric as number).toBeLessThanOrEqual(0.0105);
+    expect(check.message).toBe('pixel diff 0.0105% within threshold');
+  });
+
+  it('keeps 3 decimals when they already sit on the right side', () => {
+    expect(formatDiffPercentage(1.23456, 0.5)).toBe('1.235%');
+    expect(checkPixelDiff(diff({ diffPercentage: 1.23456 }), 0.5, true).metric).toBe(1.235);
+  });
+
+  it('records the compared image size alongside changed_region', () => {
+    const t = buildTargetResult({
+      cap: cap({ viewport: 'desktop' }),
+      diff: diff({
+        baselineDimensions: { width: 1280, height: 800 },
+        actualDimensions: { width: 1280, height: 800 },
+        changedRegion: { x: 640, y: 400, width: 640, height: 400 },
+      }),
+      baselineExists: true,
+      baselinePath: '/tmp/baseline.png',
+      pixelDiffThresholdPct: 0.1,
+      loadTimeWarnMs: 3000,
+    });
+    expect(t.image_size).toEqual({ width: 1280, height: 800 });
+  });
+});

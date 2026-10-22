@@ -99,11 +99,24 @@ function sentenceFor(group: ProblemGroup, allViewports: string[]): string {
   }
 }
 
-const TERMINAL_SENTENCE: Record<TerminalState, string> = {
+const TERMINAL_SENTENCE: Record<Exclude<TerminalState, 'BLOCKED_WITH_OWNER'>, string> = {
   SHIPPED_PROVEN: 'Safe to continue.',
   READY_TO_REVIEW: 'Someone should open the report and look at the pictures.',
-  BLOCKED_WITH_OWNER: 'Blocked: the pages that did not load need fixing first.',
 };
+
+/**
+ * BLOCKED_WITH_OWNER comes from any HTTP failure *or* any error verdict
+ * (corrupt baseline, navigation timeout), so name the blocking kinds that
+ * are actually present instead of always blaming pages that did not load.
+ */
+function blockedSentence(kinds: Set<ProblemKind>, total: number): string {
+  const blocking: string[] = [];
+  if (kinds.has('did_not_load')) blocking.push('did not load');
+  if (kinds.has('could_not_check')) blocking.push('could not be checked');
+  if (blocking.length > 0) return `Blocked: the pages that ${blocking.join(' or ')} need fixing first.`;
+  if (total === 0) return 'Blocked: nothing was checked.';
+  return 'Blocked: see the report for what needs fixing first.';
+}
 
 export interface Explanation {
   headline: string;
@@ -184,7 +197,11 @@ export function explainReport(report: RunReport): Explanation {
     const count = report.summary.warnings;
     sentences.push(`${count} ${count === 1 ? 'page' : 'pages'} loaded with small warnings.`);
   }
-  sentences.push(TERMINAL_SENTENCE[report.terminal_state]);
+  sentences.push(
+    report.terminal_state === 'BLOCKED_WITH_OWNER'
+      ? blockedSentence(new Set(orderedGroups.map((g) => g.kind)), total)
+      : TERMINAL_SENTENCE[report.terminal_state],
+  );
 
   const text = [headline, ...sentences].join(' ');
   return { headline, sentences, text };
