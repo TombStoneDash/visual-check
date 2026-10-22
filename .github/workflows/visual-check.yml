@@ -64,11 +64,11 @@ jobs:
       - name: Install Playwright Chromium (with system deps)
         run: npx playwright install --with-deps chromium
 
-      - name: Determine target URLs
-        id: urls
-        run: |
-          echo "urls=${{ github.event.inputs.urls }}" >> "$GITHUB_OUTPUT"
-          echo "threshold=${{ github.event.inputs.threshold }}" >> "$GITHUB_OUTPUT"
+      # Run this checkout's CLI. npx does not resolve this repo's own bin: it
+      # downloads whatever npm package has that name and runs it with the
+      # secrets below in its env.
+      - name: Build
+        run: npm run build
 
       # Baselines live in Supabase as of Phase 2. If a new route lacks an
       # approved baseline, deploy-gate reports `needs_baseline` and the
@@ -76,21 +76,23 @@ jobs:
       # --run-id <id>` once the PR is approved.
       - name: Run Visual Check (deploy-gate)
         id: check
+        # Dispatch inputs reach the script only through env, never through
+        # ${{ }} inside `run:`, so a crafted input cannot inject shell.
         env:
-          URLS: ${{ steps.urls.outputs.urls }}
-          THRESHOLD: ${{ steps.urls.outputs.threshold }}
+          URLS: ${{ github.event.inputs.urls }}
+          THRESHOLD: ${{ github.event.inputs.threshold }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           PROJECT_ID: ${{ vars.VISUAL_CHECK_PROJECT_ID || 'visual-check' }}
-          DEPLOYMENT_URL: ${{ steps.urls.outputs.urls }}
+          DEPLOYMENT_URL: ${{ github.event.inputs.urls }}
           BRANCH: ${{ github.head_ref || github.ref_name }}
           SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           mkdir -p reports
           set +e
-          npx visual-check deploy-gate \
+          node dist/cli.js deploy-gate \
             --urls "$URLS" \
             --project "$PROJECT_ID" \
             --deployment-url "$DEPLOYMENT_URL" \
@@ -98,7 +100,7 @@ jobs:
             --sha "$SHA" \
             --threshold "$THRESHOLD" \
             --concurrency 3 \
-            --json "reports/pr-${{ github.event.pull_request.number || github.run_id }}.json"
+            --json "reports/run-$GITHUB_RUN_ID.json"
           echo "exit_code=$?" >> "$GITHUB_OUTPUT"
 
       # Always upload the captures + diffs + reports so a human can triage
