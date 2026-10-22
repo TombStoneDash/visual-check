@@ -16,21 +16,33 @@ export function nextActionFor(report: RunReport): string {
   const isProblem = (name: RunAssertionName) =>
     assertions.some((assertion) => assertion.name === name && assertion.status !== 'pass');
 
+  // A 'fail' verdict comes from either an unhealthy HTTP check or a pixel
+  // diff over threshold; count each cause separately so a mixed run does
+  // not report every failed target under both sentences.
+  const failedBy = (name: 'http_status' | 'pixel_diff') =>
+    report.results.filter(
+      (r) =>
+        r.verdict === 'fail' &&
+        r.checks.some((c) => c.name === name && c.status === 'fail' && c.mode === 'blocking'),
+    ).length;
+  const httpFailed = failedBy('http_status');
+  const visualFailed = failedBy('pixel_diff');
+
   const problems: string[] = [];
   if (isProblem('capture_completed') && summary.errors > 0) {
     problems.push(`${summary.errors} target(s) failed to capture - re-run the capture.`);
   }
   if (isProblem('http_healthy') && summary.failed > 0) {
-    problems.push(`${summary.failed} target(s) need site-owner investigation.`);
+    problems.push(`${httpFailed || summary.failed} target(s) need site-owner investigation.`);
   }
   if (isProblem('baselines_present') && summary.needs_baseline > 0) {
     problems.push(
       `${summary.needs_baseline} target(s) have no approved baseline - review and promote.`,
     );
   }
-  if (isProblem('visual_diff_within_threshold') && summary.failed > 0) {
+  if (isProblem('visual_diff_within_threshold') && visualFailed > 0) {
     problems.push(
-      `${summary.failed} target(s) changed visually - open the HTML report and approve or fix.`,
+      `${visualFailed} target(s) changed visually - open the HTML report and approve or fix.`,
     );
   }
   if (isProblem('nonblocking_checks_clean') && summary.warnings > 0) {

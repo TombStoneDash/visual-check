@@ -86,6 +86,8 @@ export interface CaptureArtifact {
   viewport: string;
   screenshotPath: string;
   httpStatus: number | null;
+  /** Known hosting-platform error code (see HOSTING_ERROR_CODES), if the response carried one. */
+  hostingError?: string;
   /** Closed, bounded diagnostic categories; never raw page or request text. */
   consoleErrors: string[];
   loadTimeMs: number;
@@ -115,6 +117,8 @@ export interface TargetResult {
   diff_image: string | null;
   /** Bounding box of the changed pixels, when a diff was computed. */
   changed_region?: ChangedRegion | null;
+  /** Known hosting-platform error code behind an unhealthy HTTP status, if any. */
+  hosting_error?: string;
   console_errors: number;
   load_time_ms: number;
   reasons: string[];

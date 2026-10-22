@@ -47,7 +47,9 @@ cd visual-check
 npm install            # also runs `playwright install chromium`
 npm run build          # compiles the CLI to dist/cli.js
 
-# 1. Capture baselines (one time per site)
+# 1. Capture baselines (one time per site). Only healthy (2xx/3xx) captures
+#    are saved; an error page is reported, never saved, and any existing
+#    baseline for that target is kept. Exit 1 if any capture was not saved.
 node dist/cli.js baseline --urls https://mysite.com
 
 # 2. After a deploy, run a check
