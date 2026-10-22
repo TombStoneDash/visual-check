@@ -193,12 +193,23 @@ export class Capturer {
     });
 
     const start = Date.now();
+    // Only page.goto and page.screenshot have their own timeouts. A page that
+    // blocks its main thread after load (a busy loop, a font that never
+    // settles) would otherwise hang the stable-capture steps, and with them
+    // the whole run, forever. Closing the context makes every pending
+    // Playwright call reject, so the capture ends as navigation_timeout.
+    let settleTimer: NodeJS.Timeout | undefined;
+    let settleTimedOut = false;
     try {
       const response = await page.goto(url, {
         waitUntil: 'networkidle',
         timeout: this.opts.navigationTimeoutMs,
       });
       loadTimeMs = Date.now() - start;
+      settleTimer = setTimeout(() => {
+        settleTimedOut = true;
+        context.close().catch(() => {});
+      }, this.opts.navigationTimeoutMs);
       // file:// navigation never yields an HTTP response — treat a
       // successful local-page load as "200" rather than "no response".
       httpStatus = response ? response.status() : url.startsWith('file:') ? 200 : null;
@@ -235,8 +246,9 @@ export class Capturer {
       });
     } catch (e) {
       loadTimeMs = Date.now() - start;
-      error = sanitizeCaptureError(e);
+      error = settleTimedOut ? 'navigation_timeout' : sanitizeCaptureError(e);
     } finally {
+      clearTimeout(settleTimer);
       await context.close();
     }
 
