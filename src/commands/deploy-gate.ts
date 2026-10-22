@@ -11,7 +11,7 @@ import { promises as fs } from 'node:fs';
 import { Capturer, sanitizeCaptureError, urlToSlug } from '../capture.js';
 import { baselineStorageKey } from '../baseline-key.js';
 import { diffPngs, fileExists } from '../diff.js';
-import { buildTargetResult } from '../checks.js';
+import { aggregateVerdict, buildTargetResult } from '../checks.js';
 import { buildReport, formatSummary, formatTargetLine, writeJsonReport } from '../report.js';
 import { renderHtmlReport, htmlReportPathFor } from '../html-report.js';
 import { receiptPathFor, writeReceipt } from '../receipt.js';
@@ -59,9 +59,12 @@ const DEFAULT_TTL = 60 * 60 * 24 * 7; // 7 days
 export async function runDeployGate(opts: DeployGateOptions): Promise<DeployGateResult> {
   const log = opts.log ?? (opts.quiet ? () => {} : (l) => console.log(l));
   const root = path.resolve(opts.outRoot);
-  const baselineRoot = path.join(root, 'baselines');
   const dateStr = new Date().toISOString().slice(0, 10);
   const timeStamp = new Date().toISOString().replace(/[:.]/g, '-');
+  // Remote baselines are downloaded into a per-run folder, never into
+  // `<out>/baselines/`: that folder holds the local baselines `run` compares
+  // against, and the lane's Supabase baselines must not overwrite them.
+  const baselineRoot = path.join(root, 'remote-baselines', dateStr, timeStamp);
   const captureRoot = path.join(root, 'captures', dateStr, timeStamp);
   const diffRoot = path.join(root, 'diffs', dateStr, timeStamp);
   const ttl = opts.signedUrlTtlSeconds ?? DEFAULT_TTL;
@@ -78,6 +81,8 @@ export async function runDeployGate(opts: DeployGateOptions): Promise<DeployGate
     basePath: string;
     diffPath: string;
     hasBaseline: boolean;
+    /** The lookup or download threw, so whether a baseline exists is unknown. */
+    baselineFetchFailed: boolean;
   };
   const targets: Target[] = [];
   for (const url of opts.urls) {
@@ -87,6 +92,7 @@ export async function runDeployGate(opts: DeployGateOptions): Promise<DeployGate
       const basePath = path.join(baselineRoot, slug, `${vp.name}.png`);
       const diffPath = path.join(diffRoot, slug, `${vp.name}.png`);
       let hasBaseline = false;
+      let baselineFetchFailed = false;
       try {
         const resolved = await storage.downloadBaseline(
           opts.projectId,
@@ -97,11 +103,12 @@ export async function runDeployGate(opts: DeployGateOptions): Promise<DeployGate
         );
         hasBaseline = resolved !== null;
       } catch (e) {
+        baselineFetchFailed = true;
         log(
           `  [warn] baseline fetch failed for ${url} @ ${vp.name}: ${e instanceof Error ? e.message : String(e)}`,
         );
       }
-      targets.push({ url, vp, capPath, basePath, diffPath, hasBaseline });
+      targets.push({ url, vp, capPath, basePath, diffPath, hasBaseline, baselineFetchFailed });
     }
   }
 
@@ -112,7 +119,9 @@ export async function runDeployGate(opts: DeployGateOptions): Promise<DeployGate
   try {
     const runOne = async (t: Target): Promise<TargetResult> => {
       const cap: CaptureArtifact = await capturer.capture(t.url, t.vp, t.capPath);
-      const baselineExists = !cap.error && t.hasBaseline && (await fileExists(t.basePath));
+      // A failed capture keeps the approved baseline in the report so the
+      // reviewer still sees what the page should look like.
+      const baselineExists = t.hasBaseline && (await fileExists(t.basePath));
       let diff = null;
       if (!cap.error && baselineExists) {
         try {
@@ -121,7 +130,7 @@ export async function runDeployGate(opts: DeployGateOptions): Promise<DeployGate
           diff = null;
         }
       }
-      return buildTargetResult({
+      const result = buildTargetResult({
         cap,
         diff,
         baselineExists,
@@ -129,6 +138,7 @@ export async function runDeployGate(opts: DeployGateOptions): Promise<DeployGate
         pixelDiffThresholdPct: opts.threshold,
         loadTimeWarnMs: opts.loadTimeWarnMs,
       });
+      return t.baselineFetchFailed ? markBaselineFetchFailed(result) : result;
     };
 
     const pooled = await runPool(
@@ -307,6 +317,37 @@ export async function runDeployGate(opts: DeployGateOptions): Promise<DeployGate
   }
 
   return { report, signedReportUrl, alertSent };
+}
+
+/**
+ * A failed baseline lookup is an error, not a missing baseline. Reporting it
+ * as needs_baseline would invite `promote --seed` to replace an approved
+ * baseline that is still stored, just unreachable for this run.
+ */
+export function markBaselineFetchFailed(result: TargetResult): TargetResult {
+  const checks = result.checks.map((c) =>
+    c.name === 'pixel_diff'
+      ? {
+          name: c.name,
+          mode: c.mode,
+          status: 'error' as const,
+          message: 'approved baseline could not be downloaded',
+          blocking: true,
+        }
+      : c,
+  );
+  const { verdict, reasons } = aggregateVerdict(checks, true);
+  return {
+    ...result,
+    verdict,
+    pass: verdict === 'pass' || verdict === 'warn',
+    baseline: null,
+    diff_percentage: null,
+    diff_image: null,
+    changed_region: null,
+    checks,
+    reasons,
+  };
 }
 
 /** Ensure the local workspace is bootstrapped so writes succeed. */
