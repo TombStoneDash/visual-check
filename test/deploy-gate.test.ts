@@ -180,3 +180,55 @@ describe('runDeployGate orchestration', () => {
     expect(db.insertRun).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('runDeployGate baseline fetch failures', () => {
+  it('reports a failed baseline download as error, not needs_baseline', async () => {
+    vi.mocked(storage.downloadBaseline).mockRejectedValueOnce(new Error('downloadBytes 503'));
+
+    const result = await runDeployGate(baseOpts());
+    const target = result.report.results[0]!;
+
+    expect(target.verdict).toBe('error');
+    expect(target.pass).toBe(false);
+    expect(target.baseline).toBeNull();
+    expect(target.reasons).toEqual(['pixel_diff: approved baseline could not be downloaded']);
+    expect(target.checks.find((c) => c.name === 'pixel_diff')).toMatchObject({
+      status: 'error',
+      blocking: true,
+    });
+    expect(result.report.summary.needs_baseline).toBe(0);
+    expect(result.report.summary.errors).toBe(1);
+    expect(result.report.terminal_state).toBe('BLOCKED_WITH_OWNER');
+    expect(alerts.sendTelegramAlert).toHaveBeenCalledTimes(1);
+  });
+
+  it('only marks the target whose fetch failed', async () => {
+    vi.mocked(storage.downloadBaseline)
+      .mockRejectedValueOnce(new Error('timeout'))
+      .mockResolvedValueOnce(null);
+
+    const result = await runDeployGate(
+      baseOpts({
+        viewports: [
+          { name: 'mobile', width: 390, height: 844 },
+          { name: 'desktop', width: 1440, height: 900 },
+        ],
+      }),
+    );
+
+    expect(result.report.results.map((r) => r.verdict)).toEqual(['error', 'needs_baseline']);
+  });
+
+  it('downloads remote baselines into a per-run folder, never over <out>/baselines', async () => {
+    const localBaseline = path.join(workRoot, 'baselines', 'trashalert_io', 'mobile.png');
+    await fs.mkdir(path.dirname(localBaseline), { recursive: true });
+    await fs.writeFile(localBaseline, 'local approved baseline');
+
+    await runDeployGate(baseOpts());
+
+    const target = vi.mocked(storage.downloadBaseline).mock.calls[0]![4];
+    expect(path.relative(path.join(workRoot, 'baselines'), target).startsWith('..')).toBe(true);
+    expect(target.startsWith(path.join(workRoot, 'remote-baselines') + path.sep)).toBe(true);
+    expect(await fs.readFile(localBaseline, 'utf-8')).toBe('local approved baseline');
+  });
+});
