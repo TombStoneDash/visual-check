@@ -37,6 +37,16 @@ describe('cli module imports', () => {
   });
 });
 
+// A cold `node dist/cli.js --help` takes ~3s on a busy laptop; 5s killed it
+// mid-run and surfaced as a confusing `expected null to be +0`.
+const CLI_SPAWN_TIMEOUT_MS = 20_000;
+
+function spawnFailure(res: ReturnType<typeof spawnSync>): string {
+  if (res.error) return `spawn error: ${res.error.message}`;
+  if (res.signal) return `killed by ${res.signal} (timeout ${CLI_SPAWN_TIMEOUT_MS}ms?)`;
+  return `stderr: ${res.stderr}`;
+}
+
 describe('visual-check --help', () => {
   it('dist/cli.js exists after global setup', () => {
     expect(existsSync(builtCli)).toBe(true);
@@ -45,22 +55,22 @@ describe('visual-check --help', () => {
   it('exits 0 and lists all documented subcommands', () => {
     const res = spawnSync(process.execPath, [builtCli, '--help'], {
       encoding: 'utf-8',
-      timeout: 5_000,
+      timeout: CLI_SPAWN_TIMEOUT_MS,
     });
-    expect(res.status, `stderr: ${res.stderr}`).toBe(0);
+    expect(res.status, spawnFailure(res)).toBe(0);
     const out = `${res.stdout}\n${res.stderr}`;
     for (const cmd of ['baseline', 'run', 'compare', 'deploy-gate', 'promote']) {
       expect(out, `--help output should mention "${cmd}"`).toContain(cmd);
     }
     expect(out).toContain('visual-check');
-  });
+  }, 30_000);
 
   it('exits 0 on --version and reports a semver-ish string', () => {
     const res = spawnSync(process.execPath, [builtCli, '--version'], {
       encoding: 'utf-8',
-      timeout: 5_000,
+      timeout: CLI_SPAWN_TIMEOUT_MS,
     });
-    expect(res.status, `stderr: ${res.stderr}`).toBe(0);
+    expect(res.status, spawnFailure(res)).toBe(0);
     expect(res.stdout.trim()).toMatch(/^\d+\.\d+\.\d+/);
-  });
+  }, 30_000);
 });

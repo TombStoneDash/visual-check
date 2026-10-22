@@ -90,7 +90,7 @@ describe.skipIf(!browserReady && !mustRunBrowserTests)('visual-check compare —
         ],
         'pass',
       );
-      expect(res.status, `stderr: ${res.stderr}`).toBe(0);
+      expect(res.status, spawnFailure(res)).toBe(0);
       const report = await readReport(jsonPath);
       expect(report.results[0].verdict).toBe('pass');
     },
@@ -168,7 +168,7 @@ describe.skipIf(!browserReady && !mustRunBrowserTests)('visual-check compare —
         ],
         'warn-default',
       );
-      expect(res.status, `stderr: ${res.stderr}`).toBe(0);
+      expect(res.status, spawnFailure(res)).toBe(0);
       const report = await readReport(jsonPath);
       expect(report.results[0].verdict).toBe('warn');
     },
@@ -196,31 +196,41 @@ describe.skipIf(!browserReady && !mustRunBrowserTests)('visual-check compare —
   );
 });
 
+// A cold `node dist/cli.js --help` takes ~3s on a busy laptop; 5s killed it
+// mid-run and surfaced as a confusing `expected null to be +0`.
+const CLI_SPAWN_TIMEOUT_MS = 20_000;
+
+function spawnFailure(res: ReturnType<typeof spawnSync>): string {
+  if (res.error) return `spawn error: ${res.error.message}`;
+  if (res.signal) return `killed by ${res.signal} (timeout ${CLI_SPAWN_TIMEOUT_MS}ms?)`;
+  return `stderr: ${res.stderr}`;
+}
+
 describe('visual-check --help', () => {
   it('documents --strict-warn and the exit code contract', () => {
     const res = spawnSync(process.execPath, [builtCli, '--help'], {
       encoding: 'utf-8',
-      timeout: 5_000,
+      timeout: CLI_SPAWN_TIMEOUT_MS,
     });
-    expect(res.status, `stderr: ${res.stderr}`).toBe(0);
+    expect(res.status, spawnFailure(res)).toBe(0);
     expect(res.stdout).toContain('Exit codes');
     expect(res.stdout).toMatch(/0\s+success/);
     expect(res.stdout).toMatch(/1\s+failure/);
     expect(res.stdout).toMatch(/2\s+needs_baseline/);
     expect(res.stdout).toMatch(/3\s+error/);
     expect(res.stdout).toContain('--strict-warn');
-  });
+  }, 30_000);
 
   it('documents --strict-warn on both `run --help` and `compare --help`', () => {
     for (const cmd of ['run', 'compare']) {
       const res = spawnSync(process.execPath, [builtCli, cmd, '--help'], {
         encoding: 'utf-8',
-        timeout: 5_000,
+        timeout: CLI_SPAWN_TIMEOUT_MS,
       });
-      expect(res.status, `${cmd} --help stderr: ${res.stderr}`).toBe(0);
+      expect(res.status, `${cmd} --help ${spawnFailure(res)}`).toBe(0);
       expect(res.stdout, `${cmd} --help should document --strict-warn`).toContain(
         '--strict-warn',
       );
     }
-  });
+  }, 60_000);
 });
