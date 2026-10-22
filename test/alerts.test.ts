@@ -66,6 +66,12 @@ function makeRun(over: Partial<RunReport> = {}, results: TargetResult[] = []): R
 }
 
 describe('buildTelegramMessage', () => {
+  it('reports a run that checked no targets as an error, not a pass', () => {
+    const msg = buildTelegramMessage(makeRun({}, []), 'https://example.test/report.html');
+    expect(msg).toContain('Visual Check ERROR');
+    expect(msg).not.toContain('Visual Check PASS');
+  });
+
   it('uses the fail emoji when at least one target failed', () => {
     const msg = buildTelegramMessage(
       makeRun({}, [makeTarget({ verdict: 'fail' })]),

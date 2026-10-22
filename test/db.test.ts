@@ -86,6 +86,20 @@ describe('insertRun', () => {
     expect(body.html_report_path).toBe('trashalert/vc_testrun.html');
   });
 
+  it('derives verdict=error for a run that checked no targets (matches the CLI exit code)', async () => {
+    const { calls, fn } = mockFetchSequence([{ ok: true }]);
+    vi.stubGlobal('fetch', fn);
+    const r = {
+      ...baseRun,
+      results: [],
+      summary: { total: 0, passed: 0, failed: 0, warnings: 0, errors: 0, needs_baseline: 0 },
+      pass: false,
+    };
+    await insertRun(r, 'trashalert', null);
+    const body = JSON.parse((calls[0]!.init.body as string) ?? '{}');
+    expect(body.verdict).toBe('error');
+  });
+
   it('derives verdict=pass when summary is clean', async () => {
     const { calls, fn } = mockFetchSequence([{ ok: true }]);
     vi.stubGlobal('fetch', fn);
