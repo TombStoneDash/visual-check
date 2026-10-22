@@ -109,6 +109,27 @@ describe('summarize', () => {
   });
 });
 
+describe('buildReport.config', () => {
+  it('records the size each viewport was captured at, not just its name', () => {
+    const r = buildReport({
+      urls: ['https://example.com'],
+      viewports: [
+        { name: 'mobile', width: 390, height: 844 },
+        { name: 'desktop', width: 1280, height: 800 },
+      ],
+      pixelDiffThreshold: 5,
+      loadTimeWarnMs: 3000,
+      results: [mkTarget('pass')],
+      lane,
+    });
+    expect(r.config.viewports).toEqual(['mobile', 'desktop']);
+    expect(r.config.viewport_sizes).toEqual([
+      { name: 'mobile', width: 390, height: 844 },
+      { name: 'desktop', width: 1280, height: 800 },
+    ]);
+  });
+});
+
 describe('buildReport.pass', () => {
   it('is true when all targets pass or warn', () => {
     const r = buildReport({

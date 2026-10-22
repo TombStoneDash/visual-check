@@ -76,6 +76,7 @@ export function buildReceipt(params: {
       commitSha: report.commitSha,
       urls: report.config.urls,
       viewports: report.config.viewports,
+      ...(report.config.viewport_sizes ? { viewport_sizes: report.config.viewport_sizes } : {}),
     },
     next_action: nextActionFor(report),
   };

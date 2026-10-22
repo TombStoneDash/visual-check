@@ -2,7 +2,7 @@ import { describe, expect, it, afterEach } from 'vitest';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { buildReport } from '../src/report.js';
-import { receiptPathFor, writeReceipt } from '../src/receipt.js';
+import { buildReceipt, receiptPathFor, writeReceipt } from '../src/receipt.js';
 import { BaselineLane, TargetResult, ViewportSpec } from '../src/types.js';
 
 const tmp = path.resolve('test-tmp-receipts');
@@ -41,6 +41,20 @@ describe('receipt writer', () => {
     );
   });
 
+  it('leaves viewport_sizes out of the context for a report written before the field existed', () => {
+    const report = buildReport({
+      urls: ['https://example.com'],
+      viewports: vps,
+      pixelDiffThreshold: 5,
+      loadTimeWarnMs: 3000,
+      results: [passedTarget()],
+      lane,
+    });
+    delete report.config.viewport_sizes;
+    const receipt = buildReceipt({ report, receiptPath: path.join(tmp, 'old.receipt.json') });
+    expect('viewport_sizes' in receipt.context).toBe(false);
+  });
+
   it('writes terminal state, assertions, artifacts, and next action', async () => {
     const report = buildReport({
       urls: ['https://example.com'],
@@ -66,6 +80,8 @@ describe('receipt writer', () => {
     expect(receipt.artifacts.receipt).toBe(path.resolve(receiptPath));
     expect(receipt.artifacts.json).toBe(path.resolve(tmp, 'latest.json'));
     expect(receipt.context.urls).toEqual(['https://example.com']);
+    expect(receipt.context.viewport_sizes).toEqual(report.config.viewport_sizes);
+    expect(receipt.context.viewport_sizes.length).toBe(vps.length);
     expect(receipt.next_action).toMatch(/safe to continue/);
   });
 });

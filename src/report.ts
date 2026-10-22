@@ -154,6 +154,7 @@ export function buildReport(params: {
     config: {
       urls,
       viewports: viewports.map((v) => v.name),
+      viewport_sizes: viewports.map((v) => ({ name: v.name, width: v.width, height: v.height })),
       pixel_diff_threshold: pixelDiffThreshold,
       load_time_warn_ms: loadTimeWarnMs,
       lane,

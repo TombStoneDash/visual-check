@@ -155,6 +155,9 @@ export interface RunReport {
   config: {
     urls: string[];
     viewports: string[];
+    /** Size each viewport was captured at; `viewports` alone cannot tell
+     *  `desktop` from `desktop:1280x800`. Absent in reports written before it. */
+    viewport_sizes?: ViewportSpec[];
     pixel_diff_threshold: number;
     load_time_warn_ms: number;
     lane: BaselineLane;
@@ -188,6 +191,7 @@ export interface RunReceipt {
     commitSha?: string;
     urls: string[];
     viewports: string[];
+    viewport_sizes?: ViewportSpec[];
   };
   next_action: string;
 }
