@@ -33,6 +33,8 @@ describe('resolveConfigTargets viewport warnings', () => {
   it.each([
     ['unknown name', [{ name: 'phone', width: 390, height: 844 }]],
     ['zero width', [{ name: 'desktop', width: 0, height: 900 }]],
+    ['too wide', [{ name: 'desktop', width: 14400, height: 900 }]],
+    ['too tall', [{ name: 'mobile', width: 390, height: 10001 }]],
     ['empty list', []],
     ['not a list', 'desktop'],
   ])('falls back to DEFAULT_VIEWPORTS with one fallback warning when viewports is %s', async (_label, viewports) => {

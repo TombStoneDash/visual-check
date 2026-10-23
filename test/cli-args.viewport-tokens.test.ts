@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { formatViewportToken, parseViewports, UsageError } from '../src/cli-args.js';
-import { DEFAULT_VIEWPORTS } from '../src/types.js';
+import { DEFAULT_VIEWPORTS, MAX_VIEWPORT_SIDE } from '../src/types.js';
 
 describe('parseViewports name:WIDTHxHEIGHT tokens', () => {
   it('parses desktop:1280x800 into a custom-size spec', () => {
@@ -14,6 +14,12 @@ describe('parseViewports name:WIDTHxHEIGHT tokens', () => {
     ]);
   });
 
+  it('accepts a side of exactly MAX_VIEWPORT_SIDE', () => {
+    expect(parseViewports(`desktop:${MAX_VIEWPORT_SIDE}x${MAX_VIEWPORT_SIDE}`)).toEqual([
+      { name: 'desktop', width: MAX_VIEWPORT_SIDE, height: MAX_VIEWPORT_SIDE },
+    ]);
+  });
+
   it('treats a sized token at the default size the same as the bare name', () => {
     expect(parseViewports('desktop:1440x900')).toEqual([DEFAULT_VIEWPORTS[2]]);
     expect(parseViewports('desktop,desktop:1440x900')).toEqual([DEFAULT_VIEWPORTS[2]]);
@@ -23,6 +29,8 @@ describe('parseViewports name:WIDTHxHEIGHT tokens', () => {
     ['phone', /Unknown viewports: phone/],
     ['phone:1280x800', /Unknown viewports: phone:1280x800/],
     ['desktop:0x800', /Invalid viewport size: desktop:0x800/],
+    ['desktop:14400x900', /Invalid viewport size: desktop:14400x900 \(width and height can be at most 10000\)/],
+    ['mobile:390x10001', /at most 10000/],
     ['desktop:1280', /Unknown viewports: desktop:1280/],
     ['desktop:1280x', /Unknown viewports: desktop:1280x/],
     ['desktop:-1280x800', /Unknown viewports: desktop:-1280x800/],

@@ -1,4 +1,4 @@
-import { DEFAULT_VIEWPORTS, ViewportSpec } from './types.js';
+import { DEFAULT_VIEWPORTS, MAX_VIEWPORT_SIDE, ViewportSpec } from './types.js';
 
 export class UsageError extends Error {
   override name = 'UsageError';
@@ -58,6 +58,11 @@ export function parseViewports(raw: string | undefined): ViewportSpec[] {
     if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0) {
       throw new UsageError(
         `Invalid viewport size: ${token} (expected ${name}:WIDTHxHEIGHT with positive integers)`,
+      );
+    }
+    if (width > MAX_VIEWPORT_SIDE || height > MAX_VIEWPORT_SIDE) {
+      throw new UsageError(
+        `Invalid viewport size: ${token} (width and height can be at most ${MAX_VIEWPORT_SIDE})`,
       );
     }
     const spec: ViewportSpec = { name, width, height };

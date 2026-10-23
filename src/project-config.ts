@@ -9,7 +9,7 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { DEFAULT_VIEWPORTS, ViewportSpec } from './types.js';
+import { DEFAULT_VIEWPORTS, MAX_VIEWPORT_SIDE, ViewportSpec } from './types.js';
 
 export interface ProjectConfigRoute {
   id: string;
@@ -92,7 +92,8 @@ export async function loadProjectConfigFile(filePath: string): Promise<ProjectCo
 function isUsableViewport(value: unknown): value is ViewportSpec {
   if (!isPlainObject(value)) return false;
   const known = DEFAULT_VIEWPORTS.some((v) => v.name === value.name);
-  const positive = (n: unknown) => typeof n === 'number' && Number.isFinite(n) && n > 0;
+  const positive = (n: unknown) =>
+    typeof n === 'number' && Number.isFinite(n) && n > 0 && n <= MAX_VIEWPORT_SIDE;
   return known && positive(value.width) && positive(value.height);
 }
 
@@ -134,7 +135,7 @@ export function resolveConfigTargets(
     const names = DEFAULT_VIEWPORTS.map((v) => v.name);
     const namesWithOr = names.length > 1 ? `${names.slice(0, -1).join(', ')} or ${names[names.length - 1]}` : names[0];
     viewportWarnings.push(
-      `viewports: not used (each entry needs a name of ${namesWithOr} and a positive width and height); using ${names.join(', ')}`,
+      `viewports: not used (each entry needs a name of ${namesWithOr} and a positive width and height of at most ${MAX_VIEWPORT_SIDE}); using ${names.join(', ')}`,
     );
   }
 

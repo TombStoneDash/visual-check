@@ -392,7 +392,7 @@ node dist/cli.js baseline \
 | Flag | Default | Notes |
 |------|---------|-------|
 | `--urls` | required | Comma-separated. Bare hostnames get `https://` auto-prefixed. |
-| `--viewports` | `mobile,tablet,desktop` | Names, or `name:WIDTHxHEIGHT` for a custom size. |
+| `--viewports` | `mobile,tablet,desktop` | Names, or `name:WIDTHxHEIGHT` for a custom size (each side at most 10000). |
 | `--out` | `.` | Workspace root. Baselines go under `<out>/baselines/`. |
 | `--headed` | off | Show the browser window (debugging). |
 

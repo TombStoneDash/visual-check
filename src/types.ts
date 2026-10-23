@@ -58,6 +58,13 @@ export interface ChangedRegion {
   height: number;
 }
 
+/**
+ * Largest viewport width or height accepted from --viewports or a config.
+ * A typo like desktop:14400x900 would otherwise make Chromium render, and
+ * the pixel diff allocate, an image hundreds of megabytes per target.
+ */
+export const MAX_VIEWPORT_SIDE = 10_000;
+
 export const DEFAULT_VIEWPORTS: ViewportSpec[] = [
   { name: 'mobile', width: 390, height: 844 },
   { name: 'tablet', width: 768, height: 1024 },
