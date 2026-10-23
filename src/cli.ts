@@ -28,7 +28,7 @@ import { runDeployGate } from './commands/deploy-gate.js';
 import { runPromote } from './commands/promote.js';
 import { runCompare } from './commands/compare.js';
 import { describeExitCode, exitCodeFor, USAGE_OR_FATAL_EXIT_CODE } from './exit-codes.js';
-import { formatViewportToken, parseUrls, parseViewports, parseNumberOption, UsageError } from './cli-args.js';
+import { formatUrlsValue, formatViewportToken, parseUrls, parseViewports, parseNumberOption, UsageError } from './cli-args.js';
 import { loadProjectConfigFile, resolveConfigTargetsForCli } from './project-config.js';
 
 // ---------------------------------------------------------------------------
@@ -680,7 +680,7 @@ program
       const config = await loadProjectConfigFile(opts.config);
       const { urls, viewports, warnings } = resolveConfigTargetsForCli(config, opts.baseUrl);
       for (const warning of warnings) console.error(`[visual-check] warning: ${warning}`);
-      console.log(`--urls=${urls.join(',')}`);
+      console.log(`--urls=${formatUrlsValue(urls)}`);
       console.log(`--viewports=${viewports.map(formatViewportToken).join(',')}`);
       process.exit(0);
     } catch (err) {
