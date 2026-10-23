@@ -192,6 +192,9 @@ export class Capturer {
       }
     });
 
+    // Capture paths are reused across runs: drop the previous run's image so a
+    // failed capture never leaves an old screenshot posing as this run's.
+    await fs.rm(outputPath, { force: true });
     const start = Date.now();
     try {
       const response = await page.goto(url, {
