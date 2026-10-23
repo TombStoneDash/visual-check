@@ -9,7 +9,7 @@
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import { Capturer, sanitizeCaptureError, urlToSlug } from '../capture.js';
-import { baselineStorageKey } from '../baseline-key.js';
+import { baselineStorageKey, storageSlug } from '../baseline-key.js';
 import { diffPngs, fileExists } from '../diff.js';
 import { buildTargetResult } from '../checks.js';
 import { buildReport, formatSummary, formatTargetLine, writeJsonReport } from '../report.js';
@@ -205,7 +205,7 @@ export async function runDeployGate(opts: DeployGateOptions): Promise<DeployGate
     const t = targets[i]!;
     const r = results[i]!;
     const k = `${t.url}|${t.vp.name}`;
-    const keyBase = `${opts.projectId}/${report.run_id}/${urlToSlug(t.url)}/${t.vp.name}`;
+    const keyBase = `${opts.projectId}/${report.run_id}/${storageSlug(t.url)}/${t.vp.name}`;
     if (await fileExists(t.capPath)) {
       try {
         const k1 = await storage.uploadArtifact(
