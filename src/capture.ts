@@ -203,19 +203,26 @@ export class Capturer {
       // successful local-page load as "200" rather than "no response".
       httpStatus = response ? response.status() : url.startsWith('file:') ? 200 : null;
 
-      // Stable-capture: disable animations, hide caret
-      await page.addStyleTag({
-        content: `
-          *, *::before, *::after {
-            animation-duration: 0s !important;
-            animation-delay: 0s !important;
-            transition-duration: 0s !important;
-            transition-delay: 0s !important;
-            caret-color: transparent !important;
-          }
-          html { scroll-behavior: auto !important; }
-        `,
-      });
+      // Stable-capture: disable animations, hide caret. Best effort: a page
+      // whose Content-Security-Policy forbids inline styles rejects this tag,
+      // and that must not fail the capture. The screenshot call below still
+      // freezes animations and hides the caret on its own.
+      try {
+        await page.addStyleTag({
+          content: `
+            *, *::before, *::after {
+              animation-duration: 0s !important;
+              animation-delay: 0s !important;
+              transition-duration: 0s !important;
+              transition-delay: 0s !important;
+              caret-color: transparent !important;
+            }
+            html { scroll-behavior: auto !important; }
+          `,
+        });
+      } catch {
+        // Keep the page's own CSP (no bypassCSP): capture what visitors see.
+      }
 
       // Wait for fonts to eliminate flicker in text rendering
       await page.evaluate(async () => {
