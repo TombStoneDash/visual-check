@@ -17,12 +17,18 @@ function viewportLabel(name: string): string {
   return VIEWPORT_LABELS[name] ?? name;
 }
 
+/**
+ * Short spoken name for a target: host (with any non-default port), path
+ * and query, without the scheme or a leading "www.". The port and query are
+ * kept because they name different pages: localhost:3000 is not
+ * localhost:4000, and /p?id=1 is not /p?id=2.
+ */
 function siteLabel(rawUrl: string): string {
   try {
     const parsed = new URL(rawUrl);
-    const host = parsed.hostname.replace(/^www\./, '');
+    const host = parsed.host.replace(/^www\./, '');
     const pathPart = parsed.pathname && parsed.pathname !== '/' ? parsed.pathname : '';
-    return `${host}${pathPart}`;
+    return `${host}${pathPart}${parsed.search}`;
   } catch {
     return rawUrl;
   }
@@ -133,7 +139,9 @@ export function explainReport(report: RunReport): Explanation {
     const kind = kindFor(result);
     if (!kind) continue;
     const site = siteLabel(result.url);
-    const key = `${kind}|${site}`;
+    // Group by the exact target, not its label: two targets that read alike
+    // (http:// vs https://, www. vs bare) must not pool their screen sizes.
+    const key = `${kind}|${result.url}`;
     let group = groups.get(key);
     if (!group) {
       group = {
