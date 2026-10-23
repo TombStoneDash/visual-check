@@ -188,14 +188,22 @@ export async function diffPngs(
   const diffPercentage = (diffPixels / totalPixels) * 100;
   const changedRegion = diffPixels > 0 ? boundingBoxOfDiffPixels(diff, width, height) : null;
 
-  await fs.mkdir(path.dirname(diffOutputPath), { recursive: true });
-  await fs.writeFile(diffOutputPath, PNG.sync.write(diff));
+  // The pixel comparison above is already complete; failing to save the
+  // diff image (unwritable diffs dir, disk full) must not throw it away.
+  // Report no image instead, matching the dimension-mismatch path.
+  let diffImagePath: string | null = diffOutputPath;
+  try {
+    await fs.mkdir(path.dirname(diffOutputPath), { recursive: true });
+    await fs.writeFile(diffOutputPath, PNG.sync.write(diff));
+  } catch {
+    diffImagePath = null;
+  }
 
   return {
     diffPercentage,
     diffPixels,
     totalPixels,
-    diffImagePath: diffOutputPath,
+    diffImagePath,
     dimensionMismatch: false,
     baselineDimensions,
     actualDimensions,
