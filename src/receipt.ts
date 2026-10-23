@@ -17,6 +17,9 @@ export function nextActionFor(report: RunReport): string {
     assertions.some((assertion) => assertion.name === name && assertion.status !== 'pass');
 
   const problems: string[] = [];
+  if (summary.total === 0) {
+    problems.push('No targets were checked - pass at least one URL and re-run.');
+  }
   if (isProblem('capture_completed') && summary.errors > 0) {
     problems.push(`${summary.errors} target(s) failed to capture - re-run the capture.`);
   }

@@ -21,6 +21,7 @@ export {
   buildAssertions,
   terminalStateForAssertions,
   summarize,
+  runVerdict,
   buildReport,
   writeJsonReport,
   formatTargetLine,

@@ -123,7 +123,7 @@ export function explainReport(report: RunReport): Explanation {
         ? fineCount === 1
           ? '1 page checked. It is fine.'
           : '1 page checked. It has a problem.'
-        : `${total} pages checked. ${fineCount} are fine.`;
+        : `${total} pages checked. ${fineCount} ${fineCount === 1 ? 'is' : 'are'} fine.`;
 
   const allViewports = report.config.viewports;
   const groups = new Map<string, ProblemGroup>();
