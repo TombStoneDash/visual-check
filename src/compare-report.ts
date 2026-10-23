@@ -100,9 +100,12 @@ interface CheckRow {
 }
 
 // Rounds to at most 3 decimal places and drops trailing zeros, so
-// 0.1 + 0.2 renders "0.3%" instead of "0.30000000000000004%".
+// 0.1 + 0.2 renders "0.3%" instead of "0.30000000000000004%". A real
+// difference too small to show at 3 places renders "<0.001", never "0",
+// matching formatDiffPercentage in checks.ts.
 function formatPercent(n: number): string {
-  return `${Math.round(n * 1000) / 1000}`;
+  const rounded = Math.round(n * 1000) / 1000;
+  return rounded === 0 && n > 0 ? '<0.001' : `${rounded}`;
 }
 
 const STATUS_GLYPH: Record<CheckRow['status'], string> = {
@@ -237,7 +240,7 @@ export function renderCompareReport(result: CompareReportResult): string {
       <span>baseline: <b>${esc(result.baseline.url)}</b></span>
       <span>current: <b>${esc(result.current.url)}</b></span>
       <span>status: <b>${result.httpStatus ?? '—'}</b></span>
-      <span>diff: <b>${diffMeta}</b></span>
+      <span>diff: <b>${esc(diffMeta)}</b></span>
       <span>load: <b>${result.loadTimeMs}ms</b></span>
       <span>console errors: <b>${result.consoleErrors.length}</b></span>
     </div>

@@ -167,10 +167,13 @@ function fmtTime(isoString: string | null): string | null {
  * reference "now" ISO string. When `referenceEventAtIso` is null or fails to
  * parse, falls back to the snapshot's own `referenceEventAt` so a card
  * rendered on its own reads `0s` instead of borrowing an unrelated clock.
+ * An unparseable `referenceEventAt` on the snapshot itself is treated like a
+ * missing one (null, rendered as an em dash) rather than printing "NaNs".
  */
 export function elapsedLabel(s: PresenceSnapshot, referenceEventAtIso: string | null): string | null {
   if (!s.referenceEventAt) return null;
   const ref = Date.parse(s.referenceEventAt);
+  if (Number.isNaN(ref)) return null;
   const parsedNow = referenceEventAtIso ? Date.parse(referenceEventAtIso) : NaN;
   const now = Number.isNaN(parsedNow) ? ref : parsedNow;
   const secs = Math.max(0, Math.round((now - ref) / 1000));
@@ -387,6 +390,8 @@ ${cards}
   btns.forEach(function(b){ b.addEventListener('click', function(){ show(Number(b.dataset.index)); }); });
   document.addEventListener('keydown', function(e){
     if (e.target && /input|textarea/i.test(e.target.tagName)) return;
+    // Leave browser shortcuts (Cmd/Ctrl+1 tab switch, Alt+Left back) alone.
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
     var n = Number(e.key);
     if (n >= 1 && n <= pops.length) { show(n - 1); e.preventDefault(); }
     else if (e.key === ' ' || e.key === 'ArrowRight') { show(cur + 1); e.preventDefault(); }
