@@ -253,6 +253,8 @@ export async function runDeployGate(opts: DeployGateOptions): Promise<DeployGate
     );
   }
   report.storageKeys = storageKeys;
+  // Rewrite the JSON so it carries the storage keys, like the receipt does.
+  await writeJsonReport(report, jsonPath);
 
   const receiptPath = opts.receiptOutPath ?? receiptPathFor(jsonPath);
   await writeReceipt({
@@ -287,7 +289,9 @@ export async function runDeployGate(opts: DeployGateOptions): Promise<DeployGate
   }
 
   let alertSent = false;
-  if (!report.pass && signedReportUrl) {
+  // A failing gate still alerts when the report could not be uploaded or
+  // signed; the message then says the link is missing.
+  if (!report.pass) {
     try {
       await alerts.sendTelegramAlert(report, signedReportUrl);
       alertSent = true;

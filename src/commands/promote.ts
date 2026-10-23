@@ -102,7 +102,7 @@ export async function runPromote(opts: PromoteOptions): Promise<PromoteResult> {
       const local = path.join(workDir, `${urlToSlug(r.url)}-${r.viewport}.png`);
       try {
         await downloadScreenshotTo(r.screenshot_path, local);
-        const baselineKey = baselineStorageKey(run.project_id, r.url, r.viewport, lane);
+        const baselineKey = baselineStorageKey(run.project_id, r.url, r.viewport, lane, run.id);
         await storage.uploadArtifact(local, 'visual-check-baselines', baselineKey);
         await db.upsertBaseline(
           run.project_id,
