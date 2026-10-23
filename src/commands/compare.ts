@@ -35,6 +35,19 @@ export interface CompareTarget {
 
 const LOCAL_HOST_RE = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i;
 
+/**
+ * A bare IP literal with an optional port: dotted-quad IPv4 (every octet
+ * 0–255, e.g. the `192.168.1.10:5173` a dev server prints as its Network
+ * address) or a bracketed IPv6 address. Certificates are almost never issued
+ * for bare IPs, so these are guessed as http://, like localhost.
+ */
+const IP_HOST_RE =
+  /^(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(?:\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}|\[[0-9a-f:.]*:[0-9a-f:.]*\])(:\d+)?$/i;
+
+function isPlainHttpHost(hostPort: string): boolean {
+  return LOCAL_HOST_RE.test(hostPort) || IP_HOST_RE.test(hostPort);
+}
+
 /** Extensions that keep a bare `label.ext` string a file path, never a guessed web address. */
 const PAGE_FILE_EXTENSIONS = new Set([
   'html',
@@ -78,7 +91,7 @@ export function looksLikeWebAddress(raw: string): boolean {
   if (!split) return false;
   const { hostPort } = split;
 
-  if (LOCAL_HOST_RE.test(hostPort)) return true;
+  if (isPlainHttpHost(hostPort)) return true;
 
   const domainMatch = hostPort.match(/^([a-zA-Z0-9-]+\.)+([a-zA-Z]{2,})(:\d+)?$/);
   if (!domainMatch) return false;
@@ -112,7 +125,7 @@ export function resolveCompareTarget(raw: string, baseDir: string = process.cwd(
 
   if (looksLikeWebAddress(raw)) {
     const { hostPort } = splitHostAndRest(raw)!;
-    const scheme = LOCAL_HOST_RE.test(hostPort) ? 'http' : 'https';
+    const scheme = isPlainHttpHost(hostPort) ? 'http' : 'https';
     const guessedUrl = `${scheme}://${raw}`;
     return { raw, url: guessedUrl, label: guessedUrl, kind: 'url' };
   }
