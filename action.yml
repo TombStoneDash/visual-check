@@ -80,6 +80,10 @@ runs:
         URLS: ${{ steps.targets.outputs.urls }}
         VIEWPORTS: ${{ steps.targets.outputs.viewports }}
       run: |
+        # $WORK is shared by every call in a job: start clean so an earlier
+        # call's captures never end up in these baselines.
+        case "$DIR/" in "$WORK"/*) echo "::error::baseline-dir must be outside $WORK" >&2; exit 3;; esac
+        rm -rf "$WORK"
         node "$VC/dist/cli.js" baseline --urls "$URLS" --viewports "$VIEWPORTS" --out "$WORK"
         mkdir -p "$DIR"
         cp -R "$WORK/baselines/." "$DIR/"
@@ -96,6 +100,15 @@ runs:
         THRESHOLD: ${{ steps.targets.outputs.threshold }}
         PROJECT: ${{ steps.targets.outputs.project }}
       run: |
+        # upload-artifact@v4 rejects a name already used in this workflow run,
+        # so two gate calls in one job (or two matrix legs) need distinct names.
+        suffix=$(node -e "console.log(require('crypto').randomUUID().slice(0, 8))")
+        name="visual-check-${PROJECT:-report}-${GITHUB_JOB}-${GITHUB_RUN_ATTEMPT}-${suffix}"
+        echo "artifact=$(printf '%s' "$name" | tr -c 'A-Za-z0-9._-' '-')" >> "$GITHUB_OUTPUT"
+        # Start clean: a stale report.json or baseline from an earlier call in
+        # this job must never be read as this call's result.
+        case "$DIR/" in "$WORK"/*) echo "::error::baseline-dir must be outside $WORK" >&2; exit 3;; esac
+        rm -rf "$WORK"
         mkdir -p "$WORK/baselines"
         [ -d "$DIR" ] && cp -R "$DIR/." "$WORK/baselines/"
         set +e
@@ -112,7 +125,7 @@ runs:
       if: always() && inputs.mode == 'gate'
       uses: actions/upload-artifact@v4
       with:
-        name: visual-check-${{ github.job }}-${{ github.run_attempt }}
+        name: ${{ steps.gate.outputs.artifact || format('visual-check-{0}-{1}', github.job, github.run_attempt) }}
         path: |
           ${{ steps.targets.outputs.work }}/report.*
           ${{ steps.targets.outputs.work }}/receipt*.json
