@@ -134,6 +134,11 @@ export async function insertResults(
  * unapproved, then insert the new one. The uniqueness constraint on the
  * table is (project, url, viewport, lane_os, lane_runner, approved) so
  * we cannot leave two approved rows behind.
+ *
+ * PostgREST gives us no transaction across the two requests, so if the
+ * insert fails the rows we just deactivated are re-approved. Otherwise a
+ * failed promote would leave the target with no baseline at all and the
+ * next deploy-gate run would report needs_baseline instead of comparing.
  */
 export async function upsertBaseline(
   projectId: string,
@@ -153,28 +158,61 @@ export async function upsertBaseline(
     `lane_runner=eq.${encodeURIComponent(lane.runner)}`,
     `approved=eq.true`,
   ].join('&');
-  await rest(`/visual_check_baselines?${deactivateQuery}`, {
+  const deactivateRes = await rest(`/visual_check_baselines?${deactivateQuery}`, {
     method: 'PATCH',
-    headers: { Prefer: 'return=minimal' },
+    headers: { Prefer: 'return=representation' },
     body: JSON.stringify({ approved: false }),
   });
+  const deactivatedIds = await deactivatedRowIds(deactivateRes);
 
   // Insert the new approved row.
-  await rest('/visual_check_baselines', {
-    method: 'POST',
-    headers: { Prefer: 'return=minimal' },
-    body: JSON.stringify({
-      project_id: projectId,
-      url,
-      viewport,
-      lane_os: lane.os,
-      lane_runner: lane.runner,
-      storage_path: storagePath,
-      approved: true,
-      approved_by: approvedBy ?? null,
-      run_id: runId,
-    }),
-  });
+  try {
+    await rest('/visual_check_baselines', {
+      method: 'POST',
+      headers: { Prefer: 'return=minimal' },
+      body: JSON.stringify({
+        project_id: projectId,
+        url,
+        viewport,
+        lane_os: lane.os,
+        lane_runner: lane.runner,
+        storage_path: storagePath,
+        approved: true,
+        approved_by: approvedBy ?? null,
+        run_id: runId,
+      }),
+    });
+  } catch (insertError) {
+    const insertMessage = insertError instanceof Error ? insertError.message : String(insertError);
+    if (deactivatedIds.length === 0) throw insertError;
+    try {
+      const ids = deactivatedIds.map((id) => encodeURIComponent(id)).join(',');
+      await rest(`/visual_check_baselines?id=in.(${ids})`, {
+        method: 'PATCH',
+        headers: { Prefer: 'return=minimal' },
+        body: JSON.stringify({ approved: true }),
+      });
+    } catch (restoreError) {
+      const restoreMessage = restoreError instanceof Error ? restoreError.message : String(restoreError);
+      throw new Error(
+        `${insertMessage}; restoring the previous baseline (id ${deactivatedIds.join(', ')}) also failed: ${restoreMessage}`,
+      );
+    }
+    throw new Error(`${insertMessage}; the previous baseline was kept`);
+  }
+}
+
+/** Ids of the rows a `return=representation` PATCH changed; [] if unknown. */
+async function deactivatedRowIds(res: Response): Promise<string[]> {
+  try {
+    const rows = (await res.json()) as unknown;
+    if (!Array.isArray(rows)) return [];
+    return rows
+      .map((row) => (row && typeof row === 'object' ? (row as { id?: unknown }).id : undefined))
+      .filter((id): id is string => typeof id === 'string' && id.length > 0);
+  } catch {
+    return [];
+  }
 }
 
 export async function getActiveBaseline(
