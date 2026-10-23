@@ -53,6 +53,12 @@ describe('looksLikeWebAddress', () => {
     ['127.0.0.1:8080', true],
     ['localhost', true],
     ['[::1]:8080', true],
+    ['192.168.1.10:5173', true],
+    ['0.0.0.0:8080', true],
+    ['10.0.0.5/app', true],
+    ['[fe80::1]:3000/x', true],
+    ['256.1.1.1:80', false],
+    ['1.2.3:80', false],
     ['page.html', false],
     ['sub/page.html', false],
     ['./example.com', false],
@@ -101,6 +107,18 @@ describe('resolveCompareTarget — bare web addresses and missing local files', 
     const t = resolveCompareTarget('127.0.0.1:8080', baseDir);
     expect(t.kind).toBe('url');
     expect(t.url).toBe('http://127.0.0.1:8080');
+  });
+
+  it.each([
+    ['192.168.1.10:5173', 'http://192.168.1.10:5173'],
+    ['0.0.0.0:8080/app?x=1', 'http://0.0.0.0:8080/app?x=1'],
+    ['10.0.0.5', 'http://10.0.0.5'],
+    ['[fe80::1]:3000', 'http://[fe80::1]:3000'],
+  ])('guesses the IP address %j as %j instead of a missing local file', (raw, url) => {
+    const t = resolveCompareTarget(raw, baseDir);
+    expect(t.kind).toBe('url');
+    expect(t.url).toBe(url);
+    expect(t.label).toBe(url);
   });
 
   it('leaves an explicit scheme untouched regardless of case', () => {
