@@ -84,6 +84,8 @@ export function formatViewportToken(spec: ViewportSpec): string {
   return `${spec.name}:${spec.width}x${spec.height}`;
 }
 
+const DECIMAL_RE = /^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i;
+
 export function parseNumberOption(
   flag: string,
   raw: string,
@@ -92,7 +94,8 @@ export function parseNumberOption(
   const trimmed = raw.trim();
   const value = Number(trimmed);
   if (
-    trimmed === '' || !Number.isFinite(value) ||
+    // Plain decimal only: Number() alone also accepts 0x10, 0b11 and 0o7.
+    !DECIMAL_RE.test(trimmed) || !Number.isFinite(value) ||
     (rule.integer && !Number.isInteger(value)) ||
     (rule.min !== undefined && (rule.exclusiveMin ? value <= rule.min : value < rule.min)) ||
     (rule.max !== undefined && value > rule.max)

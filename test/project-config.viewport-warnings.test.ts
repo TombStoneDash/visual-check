@@ -33,6 +33,9 @@ describe('resolveConfigTargets viewport warnings', () => {
   it.each([
     ['unknown name', [{ name: 'phone', width: 390, height: 844 }]],
     ['zero width', [{ name: 'desktop', width: 0, height: 900 }]],
+    ['fractional width', [{ name: 'desktop', width: 1280.5, height: 800 }]],
+    ['string deviceScaleFactor', [{ name: 'desktop', width: 1280, height: 800, deviceScaleFactor: '2' }]],
+    ['zero deviceScaleFactor', [{ name: 'desktop', width: 1280, height: 800, deviceScaleFactor: 0 }]],
     ['empty list', []],
     ['not a list', 'desktop'],
   ])('falls back to DEFAULT_VIEWPORTS with one fallback warning when viewports is %s', async (_label, viewports) => {
@@ -52,6 +55,14 @@ describe('resolveConfigTargets viewport warnings', () => {
     );
     const result = resolveConfigTargets(config, 'https://example.com');
     expect(result.viewports).toEqual([{ name: 'desktop', width: 1280, height: 800 }]);
+    expect(result.warnings.filter((w) => w.startsWith('viewport'))).toHaveLength(0);
+  });
+
+  it('keeps a numeric deviceScaleFactor with no viewport warning', async () => {
+    const vp = { name: 'mobile', width: 390, height: 844, deviceScaleFactor: 2 };
+    const config = await loadProjectConfigFile(await writeJson('vc.json', { ...base, viewports: [vp] }));
+    const result = resolveConfigTargets(config, 'https://example.com');
+    expect(result.viewports).toEqual([vp]);
     expect(result.warnings.filter((w) => w.startsWith('viewport'))).toHaveLength(0);
   });
 

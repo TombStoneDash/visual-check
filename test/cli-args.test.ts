@@ -42,6 +42,15 @@ describe('parseNumberOption', () => {
     expect(parse).toThrow(UsageError);
     expect(parse).toThrow(`Invalid --threshold: ${raw} (expected a finite number >= 0 <= 100)`);
   });
+  it.each(['.5', '5.', '+5', '1e1', '1E-1'])('accepts decimal threshold form %j', (raw) => {
+    expect(parseNumberOption('--threshold', raw, { min: 0, max: 100 })).toBe(Number(raw));
+  });
+  it.each(['0x10', '0b11', '0o7', '0X1'])('rejects non-decimal literal %j', (raw) => {
+    expect(() => parseNumberOption('--threshold', raw, { min: 0, max: 100 })).toThrow(UsageError);
+    expect(() => parseNumberOption('--concurrency', raw, { min: 1, max: 16, integer: true })).toThrow(
+      UsageError,
+    );
+  });
   it.each(['1', '16'])('accepts concurrency boundary %s', (raw) => {
     expect(parseNumberOption('--concurrency', raw, { min: 1, max: 16, integer: true })).toBe(Number(raw));
   });
