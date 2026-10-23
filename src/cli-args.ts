@@ -10,7 +10,17 @@ export function parseUrls(raw: string): string[] {
   const seen = new Set<string>();
   const urls: string[] = [];
   for (const entry of entries) {
-    const normalized = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(entry) ? entry : `https://${entry}`;
+    const hasScheme = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(entry);
+    // A scheme-less entry is read as a host, so the piece after a comma
+    // inside a URL ("?ids=1,2" -> "2") would become a target of its own
+    // ("https://2" is the IPv4 address 0.0.0.2). Real hosts have a dot.
+    const bareHost = entry.split(/[/?#:]/, 1)[0]!;
+    if (!hasScheme && bareHost !== 'localhost' && !bareHost.includes('.')) {
+      throw new UsageError(
+        `Invalid --urls entry: ${entry} (not a host name; if a URL contains a comma, write it as %2C)`,
+      );
+    }
+    const normalized = hasScheme ? entry : `https://${entry}`;
     let parsed: URL;
     try {
       parsed = new URL(normalized);
@@ -26,6 +36,15 @@ export function parseUrls(raw: string): string[] {
     urls.push(normalized);
   }
   return urls;
+}
+
+/**
+ * Join URLs into one --urls value that parseUrls splits back into the same
+ * list: a comma inside a URL is written as %2C, which servers decode to the
+ * same character.
+ */
+export function formatUrlsValue(urls: string[]): string {
+  return urls.map((url) => url.replace(/,/g, '%2C')).join(',');
 }
 
 const VIEWPORT_TOKEN_RE = /^([^:]+):(\d+)x(\d+)$/;
