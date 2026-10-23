@@ -23,8 +23,8 @@
     "start": "node dist/cli.js",
     "link:global": "npm link",
     "postinstall": "playwright install chromium",
-    "baseline:portfolio": "npm run build --silent && node dist/cli.js baseline --urls https://trashalert.io,https://actorlab.io,https://lims.bot,https://noui.bot,https://prelithic.build",
-    "check:portfolio": "npm run build --silent && node dist/cli.js run --urls https://trashalert.io,https://actorlab.io,https://lims.bot,https://noui.bot,https://prelithic.build --json reports/latest.json",
+    "baseline:portfolio": "npm run build --silent && node dist/cli.js baseline --urls https://trashalert.io,https://actorlab.io,https://lims.bot,https://noui.bot,https://prelithic.com",
+    "check:portfolio": "npm run build --silent && node dist/cli.js run --urls https://trashalert.io,https://actorlab.io,https://lims.bot,https://noui.bot,https://prelithic.com --json reports/latest.json",
     "demo:smoke": "npm run build --silent && node demo/smoke.mjs",
     "site:build": "npm run build --silent && node scripts/build-site.mjs"
   },
