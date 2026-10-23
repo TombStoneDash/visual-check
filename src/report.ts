@@ -9,6 +9,7 @@ import {
   RunSummary,
   TerminalState,
   TargetResult,
+  Verdict,
   ViewportSpec,
 } from './types.js';
 
@@ -28,6 +29,19 @@ export function summarize(results: TargetResult[]): RunSummary {
     ).length,
     needs_baseline: results.filter((r) => r.verdict === 'needs_baseline').length,
   };
+}
+
+/**
+ * One verdict for the whole run, worst first. Same order the CLI uses for its
+ * exit code, so the HTML badge never disagrees with the process result.
+ */
+export function runVerdict(summary: RunSummary): Verdict {
+  if (summary.total === 0) return 'error';
+  if (summary.errors > 0) return 'error';
+  if (summary.failed > 0) return 'fail';
+  if (summary.needs_baseline > 0) return 'needs_baseline';
+  if (summary.warnings > 0) return 'warn';
+  return 'pass';
 }
 
 function countCheckFailures(

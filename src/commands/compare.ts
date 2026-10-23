@@ -18,6 +18,7 @@ import { buildReport, formatSummary, formatTargetLine, writeJsonReport } from '.
 import { renderHtmlReport, htmlReportPathFor } from '../html-report.js';
 import { receiptPathFor, writeReceipt } from '../receipt.js';
 import { runPool } from '../pool.js';
+import { runVerdict } from '../report.js';
 import { BaselineLane, CaptureArtifact, RunReport, TargetResult, ViewportSpec } from '../types.js';
 
 export interface CompareTarget {
@@ -333,7 +334,7 @@ export async function runCompare(opts: CompareOptions): Promise<CompareRunResult
   if (!opts.quiet) {
     log('\n[visual-check] summary');
     log(formatSummary(report.summary));
-    log(`\n[visual-check] overall: ${report.pass ? 'PASS' : 'FAIL'}`);
+    log(`\n[visual-check] overall: ${runVerdict(report.summary).toUpperCase()}`);
   }
 
   let jsonPath: string | null = null;

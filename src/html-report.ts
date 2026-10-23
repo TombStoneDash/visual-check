@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { paletteCss } from './report-theme.js';
+import { runVerdict } from './report.js';
 import { ChangedRegion, DEFAULT_VIEWPORTS, RunReport, TargetResult, Verdict } from './types.js';
 
 /**
@@ -166,7 +167,7 @@ function renderAssertions(assertions: RunReport['assertions']): string {
 }
 
 async function buildHtml(report: RunReport): Promise<string> {
-  const overall = VERDICT_META[report.pass ? 'pass' : 'fail'];
+  const overall = VERDICT_META[runVerdict(report.summary)];
   const targets = await Promise.all(report.results.map((r, i) => renderTarget(r, i)));
 
   return `<!doctype html>
