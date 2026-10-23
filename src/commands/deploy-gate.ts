@@ -19,6 +19,7 @@ import { runPool } from '../pool.js';
 import * as storage from '../storage.js';
 import * as db from '../db.js';
 import * as alerts from '../alerts.js';
+import { runVerdict } from '../report.js';
 import {
   BaselineLane,
   CaptureArtifact,
@@ -302,7 +303,7 @@ export async function runDeployGate(opts: DeployGateOptions): Promise<DeployGate
   if (!opts.quiet) {
     log('\n[visual-check] summary');
     log(formatSummary(report.summary));
-    log(`\n[visual-check] overall: ${report.pass ? 'PASS' : 'FAIL'}`);
+    log(`\n[visual-check] overall: ${runVerdict(report.summary).toUpperCase()}`);
     if (signedReportUrl) log(`[visual-check] report → ${signedReportUrl}`);
   }
 

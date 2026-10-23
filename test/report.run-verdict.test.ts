@@ -116,3 +116,28 @@ describe('receipt next action for a run with no targets', () => {
     expect(nextActionFor(r)).toBe('No targets were checked - pass at least one URL and re-run.');
   });
 });
+
+describe('compare console "overall" line', () => {
+  it('says NEEDS_BASELINE, not FAIL, when the baseline is missing', async () => {
+    const { runCompare } = await import('../src/commands/compare.js');
+    const lines: string[] = [];
+    const out = await fs.mkdtemp(path.join(os.tmpdir(), 'vc-overall-'));
+    try {
+      const result = await runCompare({
+        baseline: 'demo/fixtures/does-not-exist.html',
+        current: 'demo/fixtures/page.html',
+        viewports: vps,
+        outRoot: out,
+        threshold: 0.1,
+        loadTimeWarnMs: 3000,
+        lane,
+        htmlOutPath: false,
+        log: (line) => lines.push(line),
+      });
+      expect(result.report.summary.needs_baseline).toBe(1);
+      expect(lines.join('\n')).toContain('[visual-check] overall: NEEDS_BASELINE');
+    } finally {
+      await fs.rm(out, { recursive: true, force: true });
+    }
+  }, 60_000);
+});

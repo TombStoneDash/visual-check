@@ -373,7 +373,7 @@ program
       if (!opts.quiet) {
         console.log('\n[visual-check] summary');
         console.log(formatSummary(report.summary));
-        console.log(`\n[visual-check] overall: ${report.pass ? 'PASS' : 'FAIL'}`);
+        console.log(`\n[visual-check] overall: ${reportVerdict(report.summary).toUpperCase()}`);
       }
 
       if (opts.json) {
