@@ -81,6 +81,13 @@ describe('Telegram character budget', () => {
     expect(JSON.parse(request[1].body as string).text).toBe(message);
   });
 
+  it('says the report link is missing instead of dropping the alert', () => {
+    const message = buildTelegramMessage(makeRun(1), null);
+    expect(message).not.toContain('<a href');
+    expect(message.endsWith('HTML report link unavailable (upload or signing failed); see the CI artifacts.')).toBe(true);
+    expect(message).toContain('<b>Visual Check FAIL</b>');
+  });
+
   it('leaves a short run byte-for-byte unchanged', () => {
     expect(buildTelegramMessage(makeRun(1), reportUrl)).toBe(
       '❌ <b>Visual Check FAIL</b> — <code>visual-check</code>\n' +

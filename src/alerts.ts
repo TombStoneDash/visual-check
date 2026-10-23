@@ -31,7 +31,7 @@ function shorten(input: string, maxChars: number): string {
   return input.length > maxChars ? input.slice(0, maxChars - 1) + '…' : input;
 }
 
-export function buildTelegramMessage(run: RunReport, signedReportUrl: string): string {
+export function buildTelegramMessage(run: RunReport, signedReportUrl: string | null): string {
   const verdict = deriveVerdict(run);
   const emoji = EMOJI[verdict] ?? 'ℹ️';
   const project = run.projectId ?? 'visual-check';
@@ -52,7 +52,9 @@ export function buildTelegramMessage(run: RunReport, signedReportUrl: string): s
     const reason = r.reasons[0] ?? r.verdict;
     return `• <code>${escapeHtml(shorten(r.url, 120))}</code> @ ${escapeHtml(r.viewport)} — ${escapeHtml(shorten(reason, 160))}`;
   });
-  const link = `\n\n<a href="${escapeHtml(signedReportUrl).replace(/"/g, '&quot;')}">Open HTML report</a>`;
+  const link = signedReportUrl
+    ? `\n\n<a href="${escapeHtml(signedReportUrl).replace(/"/g, '&quot;')}">Open HTML report</a>`
+    : '\n\nHTML report link unavailable (upload or signing failed); see the CI artifacts.';
   const render = (): string => {
     const overflowCount = failingTargets.length - failing.length;
     const overflowLine =
@@ -79,7 +81,7 @@ export function buildTelegramMessage(run: RunReport, signedReportUrl: string): s
 
 export async function sendTelegramAlert(
   run: RunReport,
-  signedReportUrl: string,
+  signedReportUrl: string | null,
 ): Promise<void> {
   const token = requireEnv('TELEGRAM_BOT_TOKEN');
   const chatId = requireEnv('TELEGRAM_CHAT_ID');

@@ -29,4 +29,14 @@ describe('baselineStorageKey', () => {
     expect(key).toBe('project/macos--mini-local-2/x-io/desktop.png');
     expect(key.split('/')[1]).toMatch(/^[a-z0-9-]+$/);
   });
+
+  it('gives each promotion its own object when a run id is passed', () => {
+    const a = baselineStorageKey('project', 'https://x.io', 'desktop', macLane, 'vc_a1');
+    const b = baselineStorageKey('project', 'https://x.io', 'desktop', macLane, 'vc_b2');
+    expect(a).toBe('project/macos-macmini-local/x-io/desktop-vc_a1.png');
+    expect(a).not.toBe(b);
+    expect(baselineStorageKey('project', 'https://x.io', 'desktop', macLane, '../x')).toBe(
+      'project/macos-macmini-local/x-io/desktop----x.png',
+    );
+  });
 });

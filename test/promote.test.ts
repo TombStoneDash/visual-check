@@ -71,7 +71,7 @@ describe('runPromote', () => {
     expect(db.upsertBaseline).toHaveBeenCalledTimes(2);
     expect(storage.uploadArtifact).toHaveBeenCalledTimes(2);
     for (const viewport of ['mobile', 'desktop']) {
-      const key = `trashalert/windows-lenovo-local/x-io/${viewport}.png`;
+      const key = `trashalert/windows-lenovo-local/x-io/${viewport}-vc_ok.png`;
       expect(storage.uploadArtifact).toHaveBeenCalledWith(
         expect.any(String), 'visual-check-baselines', key,
       );

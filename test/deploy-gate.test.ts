@@ -175,6 +175,23 @@ describe('runDeployGate orchestration', () => {
     expect(result.report.storageKeys?.htmlReport).toBeTruthy();
   });
 
+  it('writes the storage keys into the on-disk JSON report too', async () => {
+    const jsonOutPath = path.join(workRoot, 'out', 'report.json');
+    const result = await runDeployGate(baseOpts({ jsonOutPath }));
+    const onDisk = JSON.parse(await fs.readFile(jsonOutPath, 'utf8'));
+    expect(onDisk.storageKeys).toEqual(result.report.storageKeys);
+    expect(onDisk.storageKeys.htmlReport).toBeTruthy();
+  });
+
+  it('still alerts on a failing gate when the report link cannot be signed', async () => {
+    vi.mocked(storage.signedUrl).mockRejectedValueOnce(new Error('storage down'));
+    const result = await runDeployGate(baseOpts());
+    expect(result.report.pass).toBe(false);
+    expect(result.signedReportUrl).toBeNull();
+    expect(alerts.sendTelegramAlert).toHaveBeenCalledWith(expect.anything(), null);
+    expect(result.alertSent).toBe(true);
+  });
+
   it('does not call insertRun twice on a single run', async () => {
     await runDeployGate(baseOpts());
     expect(db.insertRun).toHaveBeenCalledTimes(1);
