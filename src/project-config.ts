@@ -92,8 +92,13 @@ export async function loadProjectConfigFile(filePath: string): Promise<ProjectCo
 function isUsableViewport(value: unknown): value is ViewportSpec {
   if (!isPlainObject(value)) return false;
   const known = DEFAULT_VIEWPORTS.some((v) => v.name === value.name);
-  const positive = (n: unknown) => typeof n === 'number' && Number.isFinite(n) && n > 0;
-  return known && positive(value.width) && positive(value.height);
+  // Playwright rejects fractional viewport sizes and non-numeric scale factors
+  // at capture time, which would turn every target into an error.
+  const positiveInt = (n: unknown) => typeof n === 'number' && Number.isInteger(n) && n > 0;
+  const scale = value.deviceScaleFactor;
+  const scaleOk =
+    scale === undefined || (typeof scale === 'number' && Number.isFinite(scale) && scale > 0);
+  return known && positiveInt(value.width) && positiveInt(value.height) && scaleOk;
 }
 
 export function resolveConfigTargets(
@@ -134,7 +139,7 @@ export function resolveConfigTargets(
     const names = DEFAULT_VIEWPORTS.map((v) => v.name);
     const namesWithOr = names.length > 1 ? `${names.slice(0, -1).join(', ')} or ${names[names.length - 1]}` : names[0];
     viewportWarnings.push(
-      `viewports: not used (each entry needs a name of ${namesWithOr} and a positive width and height); using ${names.join(', ')}`,
+      `viewports: not used (each entry needs a name of ${namesWithOr} a positive integer width and height, and a positive deviceScaleFactor if set); using ${names.join(', ')}`,
     );
   }
 

@@ -173,7 +173,7 @@ node dist/cli.js run \
 |--------------|-----------|-------|
 | `routes[].path` | `config-targets`, `run`, `deploy-gate`, `compare` (first route only) | Resolved against `--base-url`, else the config `baseUrl`; neither present is a usage error. Duplicates collapse. |
 | `baseUrl` | `config-targets` (fallback), `run`, `compare`, `deploy-gate` | Optional absolute http(s) URL. `--base-url` wins over it. |
-| `viewports[]` | `config-targets`, `run`, `compare`, `deploy-gate` | Known names (`mobile`, `tablet`, `desktop`) at any positive size; the size is captured as given. Unusable lists fall back to the defaults with one warning. |
+| `viewports[]` | `config-targets`, `run`, `compare`, `deploy-gate` | Known names (`mobile`, `tablet`, `desktop`) at any positive whole-pixel size, with an optional positive `deviceScaleFactor`; the size is captured as given. Unusable lists fall back to the defaults with one warning. |
 | `projectId` | all | Required, identifies the config. `deploy-gate` still takes `--project`. |
 | everything else (`checks`, `themes`, `lane`, `waitFor`, `maskSelectors`, ...) | none yet | Reported once each on stderr as `not applied by config-targets yet`, never silently dropped. |
 

@@ -45,26 +45,26 @@ if (!(await exists(path.join(outputRoot, 'pass', 'report.json')))) {
   if (r.status !== 0) process.exit(r.status ?? 1);
 }
 
-await fs.rm(siteRoot, { recursive: true, force: true });
-await fs.mkdir(path.join(siteRoot, 'reports'), { recursive: true });
-await fs.mkdir(path.join(siteRoot, 'shots'), { recursive: true });
-
-async function loadScenario(name) {
+// Read and check both scenarios before touching site/, so a missing or broken
+// demo output fails the build instead of leaving site/ half-deleted.
+async function readScenario(name) {
   const dir = path.join(outputRoot, name);
   const report = JSON.parse(await fs.readFile(path.join(dir, 'report.json'), 'utf8'));
-  await fs.copyFile(path.join(dir, 'report.html'), path.join(siteRoot, 'reports', `${name}.html`));
+  const htmlSrc = path.join(dir, 'report.html');
+  if (!(await exists(htmlSrc))) throw new Error(`${htmlSrc} is missing`);
+  if (!Array.isArray(report.results) || report.results.length === 0) {
+    throw new Error(`${path.join(dir, 'report.json')} has no results`);
+  }
 
   const desktop = report.results.find((r) => r.viewport === 'desktop') ?? report.results[0];
-  const screenshots = [];
+  const shots = [];
   for (const [label, src] of [
     ['baseline', desktop.baseline],
     ['current', desktop.screenshot],
     ['diff', desktop.diff_image],
   ]) {
     if (!src || !(await exists(src))) continue;
-    const dest = `shots/${name}-${desktop.viewport}-${label}.png`;
-    await fs.copyFile(src, path.join(siteRoot, dest));
-    screenshots.push({ label: `${desktop.viewport} ${label}`, src: dest });
+    shots.push({ label: `${desktop.viewport} ${label}`, src, dest: `shots/${name}-${desktop.viewport}-${label}.png` });
   }
 
   const worst = report.results.reduce(
@@ -73,16 +73,36 @@ async function loadScenario(name) {
   );
   const threshold = report.config?.pixel_diff_threshold ?? 5;
   return {
-    name,
-    verdict: report.pass ? 'pass' : 'fail',
-    diffLabel: `${worst}%`,
-    threshold: `${threshold}%`,
-    reportHref: `reports/${name}.html`,
-    screenshots,
+    htmlSrc,
+    shots,
+    scenario: {
+      name,
+      verdict: report.pass ? 'pass' : 'fail',
+      diffLabel: `${worst}%`,
+      threshold: `${threshold}%`,
+      reportHref: `reports/${name}.html`,
+      screenshots: shots.map(({ label, dest }) => ({ label, src: dest })),
+    },
   };
 }
 
-const compare = [await loadScenario('pass'), await loadScenario('fail')];
+let loaded;
+try {
+  loaded = [await readScenario('pass'), await readScenario('fail')];
+} catch (err) {
+  console.error(`[build-site] demo output is incomplete, site/ left unchanged: ${err.message}`);
+  console.error('[build-site] re-run `npm run demo:smoke`, then try again.');
+  process.exit(1);
+}
+
+await fs.rm(siteRoot, { recursive: true, force: true });
+await fs.mkdir(path.join(siteRoot, 'reports'), { recursive: true });
+await fs.mkdir(path.join(siteRoot, 'shots'), { recursive: true });
+for (const { htmlSrc, shots, scenario } of loaded) {
+  await fs.copyFile(htmlSrc, path.join(siteRoot, 'reports', `${scenario.name}.html`));
+  for (const shot of shots) await fs.copyFile(shot.src, path.join(siteRoot, shot.dest));
+}
+const compare = loaded.map((l) => l.scenario);
 
 const html = renderDemoSite({
   presence: DEMO_SNAPSHOTS,
