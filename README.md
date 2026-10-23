@@ -500,6 +500,8 @@ node dist/cli.js promote \
 
 Sets the results from `run-id` as the new approved baselines.
 
+Exit codes: `0` when every requested target was promoted (targets skipped by policy, such as a `fail` without `--accept-fail`, do not count against it); `1` when nothing was promoted, or when a requested target could not be promoted (a storage or database error, or a `--select` pair that is not in the run). Each target that was not promoted is printed with its reason.
+
 ### Development
 
 ```bash
