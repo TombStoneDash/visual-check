@@ -170,6 +170,63 @@ describe('upsertBaseline', () => {
     expect(postBody.lane_runner).toBe('lenovo-local');
     expect(postBody.run_id).toBe('vc_testrun');
   });
+
+  const promote = () =>
+    upsertBaseline(
+      'trashalert',
+      'https://trashalert.io',
+      'mobile',
+      lane,
+      'trashalert/slug/mobile.png',
+      'vc_testrun',
+      'HT',
+    );
+
+  it('asks PostgREST which rows it deactivated', async () => {
+    const { calls, fn } = mockFetchSequence([{ ok: true, json: [{ id: 'b1' }] }, { ok: true }]);
+    vi.stubGlobal('fetch', fn);
+    await promote();
+    const h = (calls[0]!.init.headers ?? {}) as Record<string, string>;
+    expect(h['Prefer']).toBe('return=representation');
+    expect(calls).toHaveLength(2);
+  });
+
+  it('re-approves the previous baseline when the insert fails', async () => {
+    const { calls, fn } = mockFetchSequence([
+      { ok: true, json: [{ id: 'b1', approved: false }] },
+      { ok: false, status: 500, text: 'insert boom' },
+      { ok: true },
+    ]);
+    vi.stubGlobal('fetch', fn);
+    await expect(promote()).rejects.toThrow(/insert boom; the previous baseline was kept/);
+    expect(calls).toHaveLength(3);
+    expect(calls[2]!.init.method).toBe('PATCH');
+    expect(calls[2]!.url).toBe(`${SUPABASE_URL}/rest/v1/visual_check_baselines?id=in.(b1)`);
+    expect(JSON.parse(calls[2]!.init.body as string)).toEqual({ approved: true });
+  });
+
+  it('says so when restoring the previous baseline also fails', async () => {
+    const { calls, fn } = mockFetchSequence([
+      { ok: true, json: [{ id: 'b1' }] },
+      { ok: false, status: 500, text: 'insert boom' },
+      { ok: false, status: 503, text: 'restore boom' },
+    ]);
+    vi.stubGlobal('fetch', fn);
+    await expect(promote()).rejects.toThrow(
+      /insert boom; restoring the previous baseline \(id b1\) also failed: .*restore boom/,
+    );
+    expect(calls).toHaveLength(3);
+  });
+
+  it('rethrows the insert error untouched when there was no previous baseline', async () => {
+    const { calls, fn } = mockFetchSequence([
+      { ok: true, json: [] },
+      { ok: false, status: 409, text: 'insert boom' },
+    ]);
+    vi.stubGlobal('fetch', fn);
+    await expect(promote()).rejects.toThrow(/PostgREST POST \/visual_check_baselines failed: 409 insert boom$/);
+    expect(calls).toHaveLength(2);
+  });
 });
 
 describe('getActiveBaseline', () => {
