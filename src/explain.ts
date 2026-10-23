@@ -40,9 +40,33 @@ function formatChangedPct(pct: number): string {
   return `${Math.round(pct)}%`;
 }
 
-type ProblemKind = 'did_not_load' | 'could_not_check' | 'looks_different' | 'no_baseline';
+type ProblemKind =
+  | 'did_not_load'
+  | 'could_not_check'
+  | 'baseline_did_not_load'
+  | 'looks_different'
+  | 'no_baseline';
 
-const KIND_ORDER: ProblemKind[] = ['did_not_load', 'could_not_check', 'looks_different', 'no_baseline'];
+const KIND_ORDER: ProblemKind[] = [
+  'did_not_load',
+  'could_not_check',
+  'baseline_did_not_load',
+  'looks_different',
+  'no_baseline',
+];
+
+/**
+ * `compare` marks a target needs_baseline when its *baseline* page failed
+ * (HTTP error or capture error) and puts that reason first. That is not "no
+ * approved picture yet": the page to compare against did not load.
+ */
+function baselineFailureStatus(result: TargetResult): { failed: boolean; status: number | null } {
+  const first = result.reasons[0] ?? '';
+  if (first.startsWith('baseline_capture:')) return { failed: true, status: null };
+  const match = /^baseline_http_status: HTTP (\d+)/.exec(first);
+  if (match) return { failed: true, status: Number(match[1]) };
+  return { failed: false, status: null };
+}
 
 /**
  * Most target results map to a single plain-words problem, but a 'fail'
@@ -56,7 +80,9 @@ function kindFor(result: TargetResult): ProblemKind | null {
     const httpFailed = result.checks.some((c) => c.name === 'http_status' && c.status === 'fail');
     return httpFailed ? 'did_not_load' : 'looks_different';
   }
-  if (result.verdict === 'needs_baseline') return 'no_baseline';
+  if (result.verdict === 'needs_baseline') {
+    return baselineFailureStatus(result).failed ? 'baseline_did_not_load' : 'no_baseline';
+  }
   return null;
 }
 
@@ -88,6 +114,10 @@ function sentenceFor(group: ProblemGroup, allViewports: string[]): string {
     }
     case 'could_not_check':
       return `${group.site} could not be checked ${viewportsPhrase}.`;
+    case 'baseline_did_not_load': {
+      const statusText = group.status !== null ? `error ${group.status}` : 'no response';
+      return `The baseline page for ${group.site} did not load ${viewportsPhrase} (${statusText}), so nothing was compared.`;
+    }
     case 'looks_different': {
       const diffText = group.dimensionMismatch
         ? 'the page size changed'
@@ -151,6 +181,10 @@ export function explainReport(report: RunReport): Explanation {
     group.viewports.add(result.viewport);
     if (kind === 'did_not_load' && !group.statusSeen) {
       group.status = result.status;
+      group.statusSeen = true;
+    }
+    if (kind === 'baseline_did_not_load' && !group.statusSeen) {
+      group.status = baselineFailureStatus(result).status;
       group.statusSeen = true;
     }
     if (kind === 'looks_different') {
