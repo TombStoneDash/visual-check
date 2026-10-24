@@ -58,7 +58,9 @@ afterEach(() => {
 describe('runPromote failures', () => {
   it('reports and logs a target whose upload failed, keeping the others promoted', async () => {
     vi.mocked(storage.uploadArtifact).mockImplementation(async (_l, _b, key) => {
-      if (key.endsWith('/desktop.png')) throw new Error('uploadArtifact failed: 503 busy');
+      // Match the viewport segment, not the exact file name: per-run baseline
+      // keys (#75) append the run id, e.g. `.../desktop-vc_mix.png`.
+      if (/\/desktop(-[^/]*)?\.png$/.test(key)) throw new Error('uploadArtifact failed: 503 busy');
       return key;
     });
     const lines: string[] = [];
