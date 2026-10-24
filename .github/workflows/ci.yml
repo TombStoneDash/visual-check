@@ -12,7 +12,9 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # Room for a retried browser install (scripts/install-chromium.sh) on
+    # top of the ~2 minute typecheck + test + build.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -30,7 +32,7 @@ jobs:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}
       - name: Install Playwright Chromium (with system deps)
-        run: npx playwright install --with-deps chromium
+        run: bash scripts/install-chromium.sh
       - name: Typecheck
         run: npm run typecheck
       - name: Unit tests
