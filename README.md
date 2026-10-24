@@ -114,7 +114,9 @@ node dist/cli.js baseline \
   --out ./workspace
 ```
 
-Writes `.png` baselines to `./workspace/baselines/`.
+Writes `.png` baselines to `./workspace/baselines/`. A page that fails to load or
+answers with HTTP 4xx/5xx is not saved (an existing baseline is kept) and the
+command exits 1.
 
 ### Run a check
 
