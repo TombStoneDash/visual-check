@@ -30,6 +30,7 @@ import { runCompare } from './commands/compare.js';
 import { describeExitCode, exitCodeFor, USAGE_OR_FATAL_EXIT_CODE } from './exit-codes.js';
 import { formatViewportToken, parseUrls, parseViewports, parseNumberOption, UsageError } from './cli-args.js';
 import { loadProjectConfigFile, resolveConfigTargetsForCli } from './project-config.js';
+import { exitAfterStdout } from './stdout.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -267,7 +268,7 @@ program
         for (const url of urls) {
           for (const vp of viewports) console.log(`  ${url} @ ${vp.name} ${vp.width}x${vp.height}`);
         }
-        process.exit(0);
+        await exitAfterStdout(0);
       }
 
       if (!opts.quiet) {
@@ -421,7 +422,7 @@ program
         }
       }
 
-      process.exit(exitCodeFor(reportVerdict(report.summary), { strictWarn: opts.strictWarn }));
+      await exitAfterStdout(exitCodeFor(reportVerdict(report.summary), { strictWarn: opts.strictWarn }));
     },
   );
 
@@ -514,7 +515,7 @@ program
         receiptOutPath: opts.receipt,
       });
 
-      process.exit(exitCodeFor(reportVerdict(report.summary), { strictWarn: opts.strictWarn }));
+      await exitAfterStdout(exitCodeFor(reportVerdict(report.summary), { strictWarn: opts.strictWarn }));
     },
   );
 
@@ -597,7 +598,7 @@ program
         receiptOutPath: opts.receipt,
       });
 
-      process.exit(report.pass ? 0 : 1);
+      await exitAfterStdout(report.pass ? 0 : 1);
     },
   );
 
@@ -660,7 +661,7 @@ program
         console.error(`[visual-check] promote: nothing promoted (${skipped.length} skipped)`);
         process.exit(1);
       }
-      process.exit(0);
+      await exitAfterStdout(0);
     },
   );
 
@@ -682,7 +683,7 @@ program
       for (const warning of warnings) console.error(`[visual-check] warning: ${warning}`);
       console.log(`--urls=${urls.join(',')}`);
       console.log(`--viewports=${viewports.map(formatViewportToken).join(',')}`);
-      process.exit(0);
+      await exitAfterStdout(0);
     } catch (err) {
       console.error(`[visual-check] config-targets: ${err instanceof Error ? err.message : String(err)}`);
       process.exit(USAGE_OR_FATAL_EXIT_CODE);
@@ -727,7 +728,7 @@ program
     if (opts.say) {
       await speak(explanation.text);
     }
-    process.exit(0);
+    await exitAfterStdout(0);
   });
 
 // ---------------------------------------------------------------------------
