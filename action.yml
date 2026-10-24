@@ -36,9 +36,9 @@ outputs:
 runs:
   using: composite
   steps:
-    - uses: actions/setup-node@v4
+    - uses: actions/setup-node@v7
       with:
-        node-version: "20"
+        node-version: "24"
     - name: Install Visual Check
       shell: bash
       working-directory: ${{ github.action_path }}
@@ -110,7 +110,7 @@ runs:
         node "$VC/scripts/gate-summary.mjs" "$WORK/report.json" "$PROJECT" "$THRESHOLD" "$code" >> "$GITHUB_STEP_SUMMARY"
     - name: Upload report
       if: always() && inputs.mode == 'gate'
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: visual-check-${{ github.job }}-${{ github.run_attempt }}
         path: |
