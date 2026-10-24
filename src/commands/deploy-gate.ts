@@ -10,6 +10,7 @@ import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import { Capturer, sanitizeCaptureError, urlToSlug } from '../capture.js';
 import { baselineStorageKey } from '../baseline-key.js';
+import { stripUrlCredentials } from '../url-credentials.js';
 import { diffPngs, fileExists } from '../diff.js';
 import { buildTargetResult } from '../checks.js';
 import { buildReport, formatSummary, formatTargetLine, writeJsonReport } from '../report.js';
@@ -71,8 +72,11 @@ export async function runDeployGate(opts: DeployGateOptions): Promise<DeployGate
   );
 
   // --- Step 1: pull baselines for each (url, viewport) from Supabase -------
+  // `url` is the recorded identity (no `user:token@`); `navUrl` is what the
+  // browser opens.
   type Target = {
     url: string;
+    navUrl: string;
     vp: ViewportSpec;
     capPath: string;
     basePath: string;
@@ -80,7 +84,8 @@ export async function runDeployGate(opts: DeployGateOptions): Promise<DeployGate
     hasBaseline: boolean;
   };
   const targets: Target[] = [];
-  for (const url of opts.urls) {
+  for (const navUrl of opts.urls) {
+    const url = stripUrlCredentials(navUrl);
     const slug = urlToSlug(url);
     for (const vp of opts.viewports) {
       const capPath = path.join(captureRoot, slug, `${vp.name}.png`);
@@ -101,7 +106,7 @@ export async function runDeployGate(opts: DeployGateOptions): Promise<DeployGate
           `  [warn] baseline fetch failed for ${url} @ ${vp.name}: ${e instanceof Error ? e.message : String(e)}`,
         );
       }
-      targets.push({ url, vp, capPath, basePath, diffPath, hasBaseline });
+      targets.push({ url, navUrl, vp, capPath, basePath, diffPath, hasBaseline });
     }
   }
 
@@ -111,7 +116,10 @@ export async function runDeployGate(opts: DeployGateOptions): Promise<DeployGate
   const results: TargetResult[] = new Array(targets.length);
   try {
     const runOne = async (t: Target): Promise<TargetResult> => {
-      const cap: CaptureArtifact = await capturer.capture(t.url, t.vp, t.capPath);
+      const cap: CaptureArtifact = {
+        ...(await capturer.capture(t.navUrl, t.vp, t.capPath)),
+        url: t.url,
+      };
       const baselineExists = !cap.error && t.hasBaseline && (await fileExists(t.basePath));
       let diff = null;
       if (!cap.error && baselineExists) {
@@ -174,7 +182,7 @@ export async function runDeployGate(opts: DeployGateOptions): Promise<DeployGate
   // --- Step 3: assemble the report with Phase 2 context --------------------
   const report: RunReport = {
     ...buildReport({
-      urls: opts.urls,
+      urls: opts.urls.map(stripUrlCredentials),
       viewports: opts.viewports,
       pixelDiffThreshold: opts.threshold,
       loadTimeWarnMs: opts.loadTimeWarnMs,
@@ -182,7 +190,7 @@ export async function runDeployGate(opts: DeployGateOptions): Promise<DeployGate
       lane: opts.lane,
     }),
     projectId: opts.projectId,
-    deploymentUrl: opts.deploymentUrl,
+    deploymentUrl: stripUrlCredentials(opts.deploymentUrl),
     branch: opts.branch,
     commitSha: opts.commitSha,
   };

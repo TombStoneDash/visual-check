@@ -10,6 +10,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { DEFAULT_VIEWPORTS, ViewportSpec } from './types.js';
+import { stripUrlCredentials } from './url-credentials.js';
 
 export interface ProjectConfigRoute {
   id: string;
@@ -101,7 +102,7 @@ export function resolveConfigTargets(
   baseUrl: string,
 ): { urls: string[]; viewports: ViewportSpec[]; warnings: string[] } {
   if (!isAbsoluteHttpUrl(baseUrl)) {
-    throw new Error(`Invalid --base-url: ${baseUrl} (expected an absolute http:// or https:// URL)`);
+    throw new Error(`Invalid --base-url: ${stripUrlCredentials(baseUrl)} (expected an absolute http:// or https:// URL)`);
   }
   const base = new URL(baseUrl);
 

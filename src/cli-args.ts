@@ -1,4 +1,5 @@
 import { DEFAULT_VIEWPORTS, ViewportSpec } from './types.js';
+import { stripUrlCredentials } from './url-credentials.js';
 
 export class UsageError extends Error {
   override name = 'UsageError';
@@ -15,10 +16,10 @@ export function parseUrls(raw: string): string[] {
     try {
       parsed = new URL(normalized);
     } catch {
-      throw new UsageError(`Invalid --urls entry: ${entry} (expected an http:// or https:// address)`);
+      throw new UsageError(`Invalid --urls entry: ${stripUrlCredentials(entry)} (expected an http:// or https:// address)`);
     }
     if ((parsed.protocol !== 'http:' && parsed.protocol !== 'https:') || parsed.hostname === '') {
-      throw new UsageError(`Invalid --urls entry: ${entry} (expected an http:// or https:// address)`);
+      throw new UsageError(`Invalid --urls entry: ${stripUrlCredentials(entry)} (expected an http:// or https:// address)`);
     }
     const key = parsed.href;
     if (seen.has(key)) continue;
