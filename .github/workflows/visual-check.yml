@@ -62,7 +62,7 @@ jobs:
           key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}
 
       - name: Install Playwright Chromium (with system deps)
-        run: npx playwright install --with-deps chromium
+        run: bash scripts/install-chromium.sh
 
       - name: Determine target URLs
         id: urls

@@ -44,7 +44,7 @@ runs:
       working-directory: ${{ github.action_path }}
       run: |
         npm ci --ignore-scripts
-        npx playwright install --with-deps chromium
+        bash scripts/install-chromium.sh
         npm run build
     - name: Resolve targets
       id: targets
