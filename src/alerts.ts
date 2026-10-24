@@ -27,8 +27,17 @@ const EMOJI: Record<string, string> = {
 const MAX_TELEGRAM_FAILING = 10;
 export const TELEGRAM_MAX_CHARS = 4000;
 
-function shorten(input: string, maxChars: number): string {
-  return input.length > maxChars ? input.slice(0, maxChars - 1) + '…' : input;
+/**
+ * Cut `input` to at most `maxChars` UTF-16 units, ending in '…'. Never cuts
+ * between the two halves of an emoji or other astral character: a lone
+ * surrogate is not valid UTF-8, and Telegram rejects the whole message.
+ */
+export function shorten(input: string, maxChars: number): string {
+  if (input.length <= maxChars) return input;
+  let end = maxChars - 1;
+  const last = input.charCodeAt(end - 1);
+  if (last >= 0xd800 && last <= 0xdbff) end -= 1;
+  return input.slice(0, end) + '…';
 }
 
 export function buildTelegramMessage(run: RunReport, signedReportUrl: string): string {
