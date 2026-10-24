@@ -18,6 +18,7 @@ import { buildReport, formatSummary, formatTargetLine, writeJsonReport } from '.
 import { renderHtmlReport, htmlReportPathFor } from '../html-report.js';
 import { receiptPathFor, writeReceipt } from '../receipt.js';
 import { runPool } from '../pool.js';
+import { stripUrlCredentials } from '../url-credentials.js';
 import { BaselineLane, CaptureArtifact, RunReport, TargetResult, ViewportSpec } from '../types.js';
 
 export interface CompareTarget {
@@ -92,7 +93,7 @@ export function looksLikeWebAddress(raw: string): boolean {
 /** Resolve a `--baseline`/`--current` argument to a navigable target. */
 export function resolveCompareTarget(raw: string, baseDir: string = process.cwd()): CompareTarget {
   if (/^(https?):\/\//i.test(raw)) {
-    return { raw, url: raw, label: raw, kind: 'url' };
+    return { raw, url: raw, label: stripUrlCredentials(raw), kind: 'url' };
   }
   if (/^file:\/\//i.test(raw)) {
     let exists = false;
@@ -114,7 +115,7 @@ export function resolveCompareTarget(raw: string, baseDir: string = process.cwd(
     const { hostPort } = splitHostAndRest(raw)!;
     const scheme = LOCAL_HOST_RE.test(hostPort) ? 'http' : 'https';
     const guessedUrl = `${scheme}://${raw}`;
-    return { raw, url: guessedUrl, label: guessedUrl, kind: 'url' };
+    return { raw, url: guessedUrl, label: stripUrlCredentials(guessedUrl), kind: 'url' };
   }
 
   const label = path.relative(baseDir, abs) || abs;
@@ -239,7 +240,9 @@ export async function runCompare(opts: CompareOptions): Promise<CompareRunResult
       );
     }
     if (target.kind === 'url' && !explicitSchemeRe.test(target.raw)) {
-      log(`[visual-check] compare: reading "${target.raw}" as ${target.url}`);
+      log(
+        `[visual-check] compare: reading "${stripUrlCredentials(target.raw)}" as ${target.label}`,
+      );
     }
   }
 

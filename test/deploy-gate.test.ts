@@ -175,6 +175,42 @@ describe('runDeployGate orchestration', () => {
     expect(result.report.storageKeys?.htmlReport).toBeTruthy();
   });
 
+  it('navigates with URL credentials but never records them', async () => {
+    const result = await runDeployGate(
+      baseOpts({
+        urls: ['https://ci:hunter2@staging.example.com/pricing'],
+        deploymentUrl: 'https://ci:hunter2@preview.vercel.app',
+      }),
+    );
+
+    expect(storage.downloadBaseline).toHaveBeenCalledWith(
+      'trashalert',
+      'https://staging.example.com/pricing',
+      'mobile',
+      lane,
+      expect.any(String),
+    );
+    expect(result.report.results[0]!.url).toBe('https://staging.example.com/pricing');
+    expect(result.report.config.urls).toEqual(['https://staging.example.com/pricing']);
+    expect(result.report.deploymentUrl).toBe('https://preview.vercel.app');
+    expect(Object.keys(result.report.storageKeys!.screenshots)).toEqual([
+      'https://staging.example.com/pricing|mobile',
+    ]);
+
+    const recorded = JSON.stringify([
+      result.report,
+      vi.mocked(db.insertRun).mock.calls,
+      vi.mocked(db.insertResults).mock.calls,
+      vi.mocked(alerts.sendTelegramAlert).mock.calls,
+      vi.mocked(storage.uploadArtifact).mock.calls,
+    ]);
+    expect(recorded).not.toContain('hunter2');
+    const files = await fs.readdir(path.join(workRoot, 'reports'));
+    for (const f of files) {
+      expect(await fs.readFile(path.join(workRoot, 'reports', f), 'utf8')).not.toContain('hunter2');
+    }
+  });
+
   it('does not call insertRun twice on a single run', async () => {
     await runDeployGate(baseOpts());
     expect(db.insertRun).toHaveBeenCalledTimes(1);

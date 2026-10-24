@@ -3,6 +3,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { CaptureArtifact, CapturerOptions, ViewportSpec } from './types.js';
+import { stripUrlCredentials } from './url-credentials.js';
 
 export const CAPTURE_ERROR_CATEGORIES = [
   'navigation_aborted',
@@ -241,7 +242,7 @@ export class Capturer {
     }
 
     return {
-      url,
+      url: stripUrlCredentials(url),
       viewport: viewport.name,
       screenshotPath: outputPath,
       httpStatus,

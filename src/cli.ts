@@ -15,6 +15,7 @@ import {
 import { renderHtmlReport, htmlReportPathFor } from './html-report.js';
 import { receiptPathFor, writeReceipt } from './receipt.js';
 import { runPool } from './pool.js';
+import { stripUrlCredentials } from './url-credentials.js';
 import {
   BaselineLane,
   CaptureArtifact,
@@ -176,10 +177,11 @@ program
     let failures = 0;
     try {
       for (const url of urls) {
-        const slug = urlToSlug(url);
+        // Same slug as `run`: credentials never shape a baseline path.
+        const slug = urlToSlug(stripUrlCredentials(url));
         for (const vp of viewports) {
           const outPath = path.join(baselineRoot, slug, `${vp.name}.png`);
-          process.stdout.write(`  ${url} @ ${vp.name} ... `);
+          process.stdout.write(`  ${stripUrlCredentials(url)} @ ${vp.name} ... `);
           const cap = await capturer.capture(url, vp, outPath);
           if (cap.error) {
             console.log(`ERROR: ${cap.error}`);
@@ -265,7 +267,7 @@ program
       if (opts.dryRun) {
         console.log(`[visual-check] run (dry run): ${urls.length} URL(s) × ${viewports.length} viewport(s)`);
         for (const url of urls) {
-          for (const vp of viewports) console.log(`  ${url} @ ${vp.name} ${vp.width}x${vp.height}`);
+          for (const vp of viewports) console.log(`  ${stripUrlCredentials(url)} @ ${vp.name} ${vp.width}x${vp.height}`);
         }
         process.exit(0);
       }
@@ -280,13 +282,16 @@ program
       await capturer.start();
 
       // Build flat task list: each target is one capture+diff job
-      type Target = { url: string; vp: ViewportSpec; capPath: string; basePath: string; diffPath: string };
+      // `url` is the recorded identity (no `user:token@`); `navUrl` is what the browser opens.
+      type Target = { url: string; navUrl: string; vp: ViewportSpec; capPath: string; basePath: string; diffPath: string };
       const targets: Target[] = [];
-      for (const url of urls) {
+      for (const navUrl of urls) {
+        const url = stripUrlCredentials(navUrl);
         const slug = urlToSlug(url);
         for (const vp of viewports) {
           targets.push({
             url,
+            navUrl,
             vp,
             capPath: path.join(captureRoot, slug, `${vp.name}.png`),
             basePath: path.join(baselineRoot, slug, `${vp.name}.png`),
@@ -296,7 +301,10 @@ program
       }
 
       const runOne = async (t: Target): Promise<TargetResult> => {
-        const cap: CaptureArtifact = await capturer.capture(t.url, t.vp, t.capPath);
+        const cap: CaptureArtifact = {
+          ...(await capturer.capture(t.navUrl, t.vp, t.capPath)),
+          url: t.url,
+        };
         const baselineExists = !cap.error && (await fileExists(t.basePath));
         let diff = null;
         if (!cap.error && baselineExists) {
@@ -362,7 +370,7 @@ program
       }
 
       const report = buildReport({
-        urls,
+        urls: urls.map(stripUrlCredentials),
         viewports,
         pixelDiffThreshold: threshold,
         loadTimeWarnMs,
@@ -643,7 +651,8 @@ program
               .map((s) => {
                 const at = s.lastIndexOf('@');
                 if (at < 0) throw new Error(`Invalid --select entry (want "url@viewport"): ${s}`);
-                return { url: s.slice(0, at), viewport: s.slice(at + 1) };
+                // Stored runs record URLs without credentials, so match on that.
+                return { url: stripUrlCredentials(s.slice(0, at)), viewport: s.slice(at + 1) };
               })
           : undefined;
 
