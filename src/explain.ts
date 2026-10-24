@@ -34,10 +34,23 @@ function listPhrase(items: string[]): string {
   return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
 }
 
-/** Whole-percent wording: anything below 1% reads as "under 1%", not "0%". */
+/**
+ * Whole-percent wording: anything below 1% reads as "under 1%", not "0%",
+ * and anything short of 100% reads as "over 99%", never a rounded-up "100%".
+ */
 function formatChangedPct(pct: number): string {
   if (pct < 1) return 'under 1%';
+  if (pct < 100 && Math.round(pct) >= 100) return 'over 99%';
   return `${Math.round(pct)}%`;
+}
+
+/** "error 404", "error 404 and 500", "no response", "error 404 and no response". */
+function statusPhrase(statuses: Array<number | null>): string {
+  const codes = statuses.filter((s): s is number => s !== null);
+  const parts: string[] = [];
+  if (codes.length > 0) parts.push(`error ${listPhrase(codes.map(String))}`);
+  if (codes.length < statuses.length || statuses.length === 0) parts.push('no response');
+  return listPhrase(parts);
 }
 
 type ProblemKind = 'did_not_load' | 'could_not_check' | 'looks_different' | 'no_baseline';
@@ -64,10 +77,12 @@ interface ProblemGroup {
   kind: ProblemKind;
   site: string;
   viewports: Set<string>;
-  status: number | null;
-  statusSeen: boolean;
+  /** Every distinct HTTP status seen across the group's screen sizes, in order. */
+  statuses: Array<number | null>;
   dimensionMismatch: boolean;
   maxDiffPct: number;
+  /** True once any screen size in the group had a measured (same-size) diff. */
+  measuredDiff: boolean;
 }
 
 function viewportsPhraseFor(group: ProblemGroup, allViewports: string[]): string {
@@ -82,16 +97,18 @@ function viewportsPhraseFor(group: ProblemGroup, allViewports: string[]): string
 function sentenceFor(group: ProblemGroup, allViewports: string[]): string {
   const viewportsPhrase = viewportsPhraseFor(group, allViewports);
   switch (group.kind) {
-    case 'did_not_load': {
-      const statusText = group.status !== null ? `error ${group.status}` : 'no response';
-      return `${group.site} did not load ${viewportsPhrase} (${statusText}).`;
-    }
+    case 'did_not_load':
+      return `${group.site} did not load ${viewportsPhrase} (${statusPhrase(group.statuses)}).`;
     case 'could_not_check':
       return `${group.site} could not be checked ${viewportsPhrase}.`;
     case 'looks_different': {
-      const diffText = group.dimensionMismatch
-        ? 'the page size changed'
-        : `${formatChangedPct(group.maxDiffPct)} changed`;
+      // A group can mix a size change on one screen with a measured diff on
+      // another; say both rather than letting the size change hide the diff.
+      const diffText = !group.dimensionMismatch
+        ? `${formatChangedPct(group.maxDiffPct)} changed`
+        : group.measuredDiff
+          ? `the page size changed, and up to ${formatChangedPct(group.maxDiffPct)} changed elsewhere`
+          : 'the page size changed';
       return `${group.site} looks different ${viewportsPhrase} (${diffText}).`;
     }
     case 'no_baseline':
@@ -140,24 +157,24 @@ export function explainReport(report: RunReport): Explanation {
         kind,
         site,
         viewports: new Set(),
-        status: null,
-        statusSeen: false,
+        statuses: [],
         dimensionMismatch: false,
         maxDiffPct: 0,
+        measuredDiff: false,
       };
       groups.set(key, group);
       order.push(key);
     }
     group.viewports.add(result.viewport);
-    if (kind === 'did_not_load' && !group.statusSeen) {
-      group.status = result.status;
-      group.statusSeen = true;
+    if (kind === 'did_not_load' && !group.statuses.includes(result.status)) {
+      group.statuses.push(result.status);
     }
     if (kind === 'looks_different') {
       if (result.diff_percentage === null) {
         group.dimensionMismatch = true;
-      } else if (result.diff_percentage > group.maxDiffPct) {
-        group.maxDiffPct = result.diff_percentage;
+      } else {
+        group.measuredDiff = true;
+        if (result.diff_percentage > group.maxDiffPct) group.maxDiffPct = result.diff_percentage;
       }
     }
   }
