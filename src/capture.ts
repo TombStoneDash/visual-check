@@ -133,6 +133,7 @@ export function sanitizeConsoleDiagnostic(value: unknown): ConsoleDiagnosticCate
  */
 export class Capturer {
   private browser: Browser | null = null;
+  private relaunching: Promise<Browser> | null = null;
   private readonly opts: Required<CapturerOptions>;
 
   constructor(opts: CapturerOptions = {}) {
@@ -151,8 +152,37 @@ export class Capturer {
 
   async stop(): Promise<void> {
     if (!this.browser) return;
-    await this.browser.close();
+    const browser = this.browser;
     this.browser = null;
+    await browser.close();
+  }
+
+  /**
+   * The running browser, relaunched if it has disconnected (Chromium crashed
+   * or was OOM-killed mid-run). Without this one crash failed every capture
+   * left in the run. Concurrent callers share a single relaunch.
+   */
+  private async liveBrowser(): Promise<Browser> {
+    const browser = this.browser;
+    if (!browser) throw new Error('Capturer not started. Call start() first.');
+    if (browser.isConnected()) return browser;
+    if (!this.relaunching) {
+      this.relaunching = chromium
+        .launch({ headless: this.opts.headless })
+        .then(async (fresh) => {
+          if (this.browser !== browser) {
+            // stop() ran while relaunching; don't leak the new browser.
+            await fresh.close();
+            throw new Error('Capturer stopped while relaunching the browser.');
+          }
+          this.browser = fresh;
+          return fresh;
+        })
+        .finally(() => {
+          this.relaunching = null;
+        });
+    }
+    return this.relaunching;
   }
 
   async capture(
@@ -160,14 +190,14 @@ export class Capturer {
     viewport: ViewportSpec,
     outputPath: string,
   ): Promise<CaptureArtifact> {
-    if (!this.browser) throw new Error('Capturer not started. Call start() first.');
+    const browser = await this.liveBrowser();
 
     const consoleErrors: string[] = [];
     let httpStatus: number | null = null;
     let error: string | undefined;
     let loadTimeMs: number;
 
-    const context = await this.browser.newContext({
+    const context = await browser.newContext({
       viewport: { width: viewport.width, height: viewport.height },
       deviceScaleFactor: viewport.deviceScaleFactor ?? 1,
       locale: this.opts.locale,
@@ -176,7 +206,10 @@ export class Capturer {
       colorScheme: 'light',
     });
 
-    const page = await context.newPage();
+    const page = await context.newPage().catch(async (e: unknown) => {
+      await context.close().catch(() => {});
+      throw e;
+    });
 
     page.on('console', (msg) => {
       if (msg.type() === 'error') consoleErrors.push('console_error');
@@ -237,7 +270,9 @@ export class Capturer {
       loadTimeMs = Date.now() - start;
       error = sanitizeCaptureError(e);
     } finally {
-      await context.close();
+      // A browser that died mid-capture rejects close(); the capture already
+      // recorded the error, so don't let cleanup replace the artifact.
+      await context.close().catch(() => {});
     }
 
     return {
