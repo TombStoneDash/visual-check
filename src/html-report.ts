@@ -1,5 +1,6 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import { formatDiffPercentage } from './checks.js';
 import { paletteCss } from './report-theme.js';
 import { ChangedRegion, DEFAULT_VIEWPORTS, RunReport, TargetResult, Verdict } from './types.js';
 
@@ -33,13 +34,23 @@ async function toDataUri(filePath: string | null): Promise<string | null> {
   }
 }
 
+// Badge colours for the per-target and overall verdict. Every pair must
+// stay >= 4.5:1 (WCAG AA for this small bold text); checked by
+// test/html-report.badges.test.ts.
 const VERDICT_META: Record<Verdict, { label: string; color: string; bg: string }> = {
-  pass: { label: 'PASS', color: '#0a6', bg: '#e6f9f0' },
+  pass: { label: 'PASS', color: '#0a6a4a', bg: '#e6f9f0' },
   warn: { label: 'WARN', color: '#b45', bg: '#fdf2e6' },
   fail: { label: 'FAIL', color: '#c22', bg: '#fde8e8' },
   error: { label: 'ERROR', color: '#333', bg: '#eee' },
   needs_baseline: { label: 'NEEDS BASELINE', color: '#55a', bg: '#eef1fa' },
 };
+
+export const HTML_REPORT_BADGE_COLORS: ReadonlyArray<{ verdict: Verdict; fg: string; bg: string }> =
+  (Object.keys(VERDICT_META) as Verdict[]).map((verdict) => ({
+    verdict,
+    fg: VERDICT_META[verdict].color,
+    bg: VERDICT_META[verdict].bg,
+  }));
 
 function esc(s: string): string {
   return s.replace(/[&<>"']/g, (c) =>
@@ -118,7 +129,7 @@ async function renderTarget(t: TargetResult, idx: number): Promise<string> {
         <div class="meta">
           <span>viewport: <b>${esc(t.viewport)}</b></span>
           <span>status: <b>${t.status ?? '—'}</b></span>
-          <span>diff: <b>${t.diff_percentage != null ? t.diff_percentage + '%' : '—'}</b></span>
+          <span>diff: <b>${t.diff_percentage != null ? esc(formatDiffPercentage(t.diff_percentage)) : '—'}</b></span>
           <span>load: <b>${t.load_time_ms}ms</b></span>
           <span>console errs: <b>${t.console_errors}</b></span>
         </div>
