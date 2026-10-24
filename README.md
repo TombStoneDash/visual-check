@@ -114,7 +114,8 @@ node dist/cli.js baseline \
   --out ./workspace
 ```
 
-Writes `.png` baselines to `./workspace/baselines/`.
+Writes `.png` baselines to `./workspace/baselines/`. To approve the pictures
+from a run you have already reviewed instead, use [`approve`](#approve-local-baselines).
 
 ### Run a check
 
@@ -443,6 +444,36 @@ node dist/cli.js explain --report reports/latest.json --say
 `--json` prints the headline, sentences, and full text as JSON. `--say` also reads
 the text aloud on macOS when `/usr/bin/say` is available. Speech failure does not
 change the command's result.
+
+#### `approve` (local baselines)
+
+After a `run`, open the HTML report and look at the captures. Then approve the
+ones you're happy with. `approve` copies **the exact screenshots in the report**
+into `<out>/baselines/`, so what you reviewed is what becomes the baseline.
+(`baseline` recaptures and saves without review.)
+
+```bash
+node dist/cli.js run --urls https://mysite.com --json reports/latest.json
+# open reports/latest.html and review, then:
+node dist/cli.js approve --report reports/latest.json --dry-run
+node dist/cli.js approve --report reports/latest.json \
+  --select https://mysite.com@mobile,https://mysite.com@desktop \
+  --approved-by hudson
+```
+
+| Flag | Default | Notes |
+|------|---------|-------|
+| `--report` | required | JSON report from `run`, `deploy-gate` or `compare`. |
+| `--select` | every approvable target | Comma-separated `url@viewport` pairs. A pair not in the report is a usage error. |
+| `--out` | `.` | Workspace root, the same one the `run` used. |
+| `--accept-fail` | off | Also re-baseline `fail` targets, but only when the pixel diff is the only failing check. The old baseline moves to `baselines/.history/`. Nothing is deleted. |
+| `--approved-by` | — | Recorded in `baselines/approvals.jsonl` with the run id, file paths and SHA-256. |
+| `--dry-run` | off | Print what would be approved; write nothing. |
+
+Only `needs_baseline` targets are approved by default. `pass`, `warn` and `error`
+targets are never copied. If a baseline appeared after the run, that target is
+skipped, so re-run and review again. Exit codes: `0` (something approved, or would
+be on `--dry-run`), `1` (nothing approvable), `3` (bad report or usage).
 
 #### `compare`
 
