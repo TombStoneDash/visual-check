@@ -194,10 +194,19 @@ export class Capturer {
 
     const start = Date.now();
     try {
+      // Navigate to the load event, then wait for the network to go quiet
+      // with whatever is left of the navigation budget. A page that keeps a
+      // request open (analytics beacons, long-polling, a live feed) never
+      // reaches 'networkidle'; waiting for it in goto() turned every capture
+      // of such a page into a navigation_timeout error with no screenshot.
+      // Pages that do go idle within the budget are captured exactly as before.
       const response = await page.goto(url, {
-        waitUntil: 'networkidle',
+        waitUntil: 'load',
         timeout: this.opts.navigationTimeoutMs,
       });
+      // Floor of 1ms: Playwright treats a timeout of 0 as "wait forever".
+      const idleBudgetMs = Math.max(1, this.opts.navigationTimeoutMs - (Date.now() - start));
+      await page.waitForLoadState('networkidle', { timeout: idleBudgetMs }).catch(() => {});
       loadTimeMs = Date.now() - start;
       // file:// navigation never yields an HTTP response — treat a
       // successful local-page load as "200" rather than "no response".
