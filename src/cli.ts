@@ -27,6 +27,7 @@ import {
 import { runDeployGate } from './commands/deploy-gate.js';
 import { runPromote } from './commands/promote.js';
 import { runCompare } from './commands/compare.js';
+import { assertApprovableReport, parseApproveSelection, runApprove } from './commands/approve.js';
 import { describeExitCode, exitCodeFor, USAGE_OR_FATAL_EXIT_CODE } from './exit-codes.js';
 import { formatViewportToken, parseUrls, parseViewports, parseNumberOption, UsageError } from './cli-args.js';
 import { loadProjectConfigFile, resolveConfigTargetsForCli } from './project-config.js';
@@ -661,6 +662,70 @@ program
         process.exit(1);
       }
       process.exit(0);
+    },
+  );
+
+// ---------------------------------------------------------------------------
+// approve  (local: reviewed run screenshots become baselines; no browser)
+// ---------------------------------------------------------------------------
+
+program
+  .command('approve')
+  .description(
+    'Copy the screenshots from a reviewed run report into <out>/baselines/ (only needs_baseline targets unless --accept-fail)',
+  )
+  .requiredOption('--report <path>', 'JSON report from run, deploy-gate or compare (schema_version 1)')
+  .option('--select <list>', 'Comma-separated "url@viewport" pairs to approve (default: every approvable target)')
+  .option('--out <dir>', 'Workspace root directory', '.')
+  .option(
+    '--accept-fail',
+    'Also accept fail targets whose only failing check is the pixel diff; the old baseline moves to baselines/.history/',
+    false,
+  )
+  .option('--approved-by <name>', 'Name/identifier of the approver, recorded in baselines/approvals.jsonl')
+  .option('--dry-run', 'Print what would be approved and write nothing', false)
+  .action(
+    async (opts: {
+      report: string;
+      select?: string;
+      out: string;
+      acceptFail?: boolean;
+      approvedBy?: string;
+      dryRun?: boolean;
+    }) => {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(await fs.readFile(path.resolve(opts.report), 'utf-8'));
+      } catch (err) {
+        throw new Error(
+          (err as NodeJS.ErrnoException).code === 'ENOENT'
+            ? `--report ${opts.report} does not exist`
+            : `--report ${opts.report} is not valid JSON`,
+        );
+      }
+      assertApprovableReport(parsed, `--report ${opts.report}`);
+
+      const { approved, skipped, log } = await runApprove({
+        report: parsed,
+        root: opts.out,
+        selected: opts.select !== undefined ? parseApproveSelection(opts.select) : undefined,
+        acceptFail: opts.acceptFail === true,
+        approvedBy: opts.approvedBy,
+        dryRun: opts.dryRun === true,
+      });
+
+      const root = path.resolve(opts.out);
+      const verb = opts.dryRun ? 'would approve' : 'approved';
+      for (const a of approved) {
+        const replaced = a.previous ? ` (old baseline → ${path.relative(root, a.previous)})` : '';
+        console.log(`  ${verb.padEnd(13)} ${a.url} @ ${a.viewport} → ${path.relative(root, a.baseline)}${replaced}`);
+      }
+      for (const s of skipped) console.log(`  skipped       ${s.url} @ ${s.viewport} — ${s.reason}`);
+      console.log(
+        `\n[visual-check] approve: ${approved.length} ${verb}, ${skipped.length} skipped` +
+          (log ? `; logged to ${path.relative(root, log)}` : ''),
+      );
+      process.exit(approved.length > 0 ? 0 : 1);
     },
   );
 
