@@ -69,8 +69,24 @@ describe('loadProjectConfigFile + resolveConfigTargets', () => {
     [{ routes: base.routes }, /projectId/],
     [{ projectId: 'x', routes: [] }, /routes must be a non-empty array/],
     [{ projectId: 'x', routes: [{ id: 'a', path: 'pricing' }] }, /routes\[0\]\.path/],
+    [{ projectId: 'x', routes: [{ id: 'a', path: '//evil.test/x' }] }, /routes\[0\]\.path "\/\/evil\.test\/x" names another host/],
+    [{ projectId: 'x', routes: [{ id: 'a', path: '/\\evil.test/x' }] }, /routes\[0\]\.path .* names another host/],
   ])('rejects an invalid config %#', async (value, message) => {
     await expect(loadProjectConfigFile(await writeJson('bad.json', value))).rejects.toThrow(message);
+  });
+
+  it('never resolves a route to another site, even for a config that skipped validation', () => {
+    for (const p of ['//evil.test/x', '/\\evil.test/x']) {
+      const config = { projectId: 'x', routes: [{ id: 'r', path: p }] };
+      expect(() => resolveConfigTargets(config, 'https://example.com')).toThrow(
+        /route "r": .* resolves to https:\/\/evil\.test, not https:\/\/example\.com/,
+      );
+    }
+  });
+
+  it('still accepts on-site paths that merely contain // later on', () => {
+    const config = { projectId: 'x', routes: [{ id: 'r', path: '/a//b?next=//x' }] };
+    expect(resolveConfigTargets(config, 'https://example.com').urls).toEqual(['https://example.com/a//b?next=//x']);
   });
 
   it('uses valid custom viewports and falls back to DEFAULT_VIEWPORTS when absent', async () => {

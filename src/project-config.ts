@@ -53,6 +53,13 @@ function validateConfig(raw: unknown, filePath: string): ProjectConfigInput {
     if (typeof route.path !== 'string' || !route.path.startsWith('/')) {
       throw new Error(`${filePath}: routes[${index}].path must be a string starting with "/"`);
     }
+    // "//host/x" and "/\\host/x" start with "/" but are protocol-relative:
+    // URL resolution would send the check to another site.
+    if (route.path[1] === '/' || route.path[1] === '\\') {
+      throw new Error(
+        `${filePath}: routes[${index}].path "${route.path}" names another host; use a path on the site such as "/about"`,
+      );
+    }
   });
   if (raw.baseUrl !== undefined && !isAbsoluteHttpUrl(raw.baseUrl)) {
     throw new Error(`${filePath}: baseUrl must be an absolute http:// or https:// URL`);
@@ -108,7 +115,14 @@ export function resolveConfigTargets(
   const urls: string[] = [];
   const seen = new Set<string>();
   for (const route of config.routes) {
-    const href = new URL(route.path, base).href;
+    const resolved = new URL(route.path, base);
+    // Configs built in code skip validateConfig; never let a route leave the base site.
+    if (resolved.origin !== base.origin) {
+      throw new Error(
+        `route "${route.id}": path "${route.path}" resolves to ${resolved.origin}, not ${base.origin}`,
+      );
+    }
+    const href = resolved.href;
     if (seen.has(href)) continue;
     seen.add(href);
     urls.push(href);
