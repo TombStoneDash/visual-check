@@ -28,12 +28,40 @@ import { runDeployGate } from './commands/deploy-gate.js';
 import { runPromote } from './commands/promote.js';
 import { runCompare } from './commands/compare.js';
 import { describeExitCode, exitCodeFor, USAGE_OR_FATAL_EXIT_CODE } from './exit-codes.js';
-import { formatViewportToken, parseUrls, parseViewports, parseNumberOption, UsageError } from './cli-args.js';
+import {
+  assertDistinctOutputPaths,
+  formatViewportToken,
+  parseUrls,
+  parseViewports,
+  parseNumberOption,
+  UsageError,
+} from './cli-args.js';
 import { loadProjectConfigFile, resolveConfigTargetsForCli } from './project-config.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Fail before any capture when --json/--html/--receipt (or the paths derived
+ * from --json) would land on the same file and overwrite each other.
+ */
+function checkReportPaths(opts: { json?: string; html?: string | false; receipt?: string }): void {
+  const html =
+    opts.html === false
+      ? null
+      : typeof opts.html === 'string'
+        ? opts.html
+        : opts.json
+          ? htmlReportPathFor(opts.json)
+          : null;
+  const receipt = opts.receipt ?? (opts.json ? receiptPathFor(opts.json) : null);
+  assertDistinctOutputPaths([
+    ['--json', opts.json],
+    [typeof opts.html === 'string' ? '--html' : 'the default HTML report path', html],
+    [opts.receipt ? '--receipt' : 'the default receipt path', receipt],
+  ]);
+}
 
 function localLane(): BaselineLane {
   const platform = process.platform;
@@ -261,6 +289,7 @@ program
       const concurrency = parseNumberOption('--concurrency', opts.concurrency, {
         min: 1, max: 16, integer: true,
       });
+      checkReportPaths(opts);
 
       if (opts.dryRun) {
         console.log(`[visual-check] run (dry run): ${urls.length} URL(s) × ${viewports.length} viewport(s)`);
@@ -497,6 +526,7 @@ program
       const concurrency = parseNumberOption('--concurrency', opts.concurrency, {
         min: 1, max: 16, integer: true,
       });
+      checkReportPaths(opts);
 
       const { report } = await runCompare({
         baseline: opts.baseline,
@@ -576,6 +606,7 @@ program
       const ttl = parseNumberOption('--signed-url-ttl', opts.signedUrlTtl, {
         min: 0, exclusiveMin: true, integer: true,
       });
+      checkReportPaths(opts);
 
       const { report } = await runDeployGate({
         urls,

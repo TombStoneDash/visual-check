@@ -1,3 +1,4 @@
+import path from 'node:path';
 import { DEFAULT_VIEWPORTS, ViewportSpec } from './types.js';
 
 export class UsageError extends Error {
@@ -82,6 +83,28 @@ export function formatViewportToken(spec: ViewportSpec): string {
   const def = DEFAULT_VIEWPORTS.find((v) => v.name === spec.name);
   if (def && def.width === spec.width && def.height === spec.height) return spec.name;
   return `${spec.name}:${spec.width}x${spec.height}`;
+}
+
+/**
+ * Refuse output flags that resolve to the same file: the later write (HTML
+ * after JSON, receipt after both) would silently replace the earlier report.
+ * Entries with no path (output disabled or not requested) are ignored.
+ */
+export function assertDistinctOutputPaths(
+  outputs: Array<[flag: string, outPath: string | null | undefined]>,
+): void {
+  const seen = new Map<string, string>();
+  for (const [flag, outPath] of outputs) {
+    if (!outPath) continue;
+    const abs = path.resolve(outPath);
+    const earlier = seen.get(abs);
+    if (earlier) {
+      throw new UsageError(
+        `${earlier} and ${flag} both point at ${abs}; give each report its own path`,
+      );
+    }
+    seen.set(abs, flag);
+  }
 }
 
 export function parseNumberOption(
