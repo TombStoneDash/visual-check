@@ -7,6 +7,7 @@
  * Tests stub global `fetch`.
  */
 import { RunReport } from './types.js';
+import { fetchWithTimeout } from './http.js';
 
 function requireEnv(name: string): string {
   const v = process.env[name];
@@ -85,7 +86,7 @@ export async function sendTelegramAlert(
   const chatId = requireEnv('TELEGRAM_CHAT_ID');
   const text = buildTelegramMessage(run, signedReportUrl);
   const url = `https://api.telegram.org/bot${token}/sendMessage`;
-  const res = await fetch(url, {
+  const init: RequestInit = {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
@@ -94,11 +95,13 @@ export async function sendTelegramAlert(
       parse_mode: 'HTML',
       disable_web_page_preview: true,
     }),
+  };
+  await fetchWithTimeout('Telegram sendMessage', url, init, async (res) => {
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      throw new Error(`Telegram sendMessage failed: ${res.status} ${body}`);
+    }
   });
-  if (!res.ok) {
-    const body = await res.text().catch(() => '');
-    throw new Error(`Telegram sendMessage failed: ${res.status} ${body}`);
-  }
 }
 
 function deriveVerdict(run: RunReport): string {

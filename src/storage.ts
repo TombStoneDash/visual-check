@@ -9,6 +9,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { BaselineLane } from './types.js';
 import { getActiveBaseline } from './db.js';
+import { fetchWithTimeout } from './http.js';
 
 export type StorageBucket =
   | 'visual-check-screenshots'
@@ -54,7 +55,7 @@ export async function uploadArtifact(
   const body = await fs.readFile(localPath);
   const key = keyPath.replace(/^\/+/, '');
   const url = `${supabaseUrl()}/storage/v1/object/${bucket}/${key}`;
-  const res = await fetch(url, {
+  const init: RequestInit = {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${serviceKey()}`,
@@ -62,11 +63,13 @@ export async function uploadArtifact(
       'content-type': contentTypeFor(localPath),
     },
     body: body as unknown as BodyInit,
+  };
+  await fetchWithTimeout(`uploadArtifact ${bucket}/${key}`, url, init, async (res) => {
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(`uploadArtifact ${bucket}/${key} failed: ${res.status} ${text}`);
+    }
   });
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`uploadArtifact ${bucket}/${key} failed: ${res.status} ${text}`);
-  }
   return key;
 }
 
@@ -77,19 +80,21 @@ export async function signedUrl(
 ): Promise<string> {
   const key = keyPath.replace(/^\/+/, '');
   const url = `${supabaseUrl()}/storage/v1/object/sign/${bucket}/${key}`;
-  const res = await fetch(url, {
+  const init: RequestInit = {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${serviceKey()}`,
       'content-type': 'application/json',
     },
     body: JSON.stringify({ expiresIn: ttlSeconds }),
+  };
+  const body = await fetchWithTimeout(`signedUrl ${bucket}/${key}`, url, init, async (res) => {
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(`signedUrl ${bucket}/${key} failed: ${res.status} ${text}`);
+    }
+    return (await res.json()) as { signedURL?: string; signedUrl?: string };
   });
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`signedUrl ${bucket}/${key} failed: ${res.status} ${text}`);
-  }
-  const body = (await res.json()) as { signedURL?: string; signedUrl?: string };
   const rel = body.signedURL ?? body.signedUrl;
   if (!rel) throw new Error(`signedUrl ${bucket}/${key}: response missing signedURL`);
   if (rel.startsWith('http://') || rel.startsWith('https://')) return rel;
@@ -99,16 +104,17 @@ export async function signedUrl(
 async function downloadBytes(bucket: StorageBucket, keyPath: string): Promise<Uint8Array> {
   const key = keyPath.replace(/^\/+/, '');
   const url = `${supabaseUrl()}/storage/v1/object/${bucket}/${key}`;
-  const res = await fetch(url, {
+  const init: RequestInit = {
     method: 'GET',
     headers: { Authorization: `Bearer ${serviceKey()}` },
+  };
+  return fetchWithTimeout(`downloadBytes ${bucket}/${key}`, url, init, async (res) => {
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(`downloadBytes ${bucket}/${key} failed: ${res.status} ${text}`);
+    }
+    return new Uint8Array(await res.arrayBuffer());
   });
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`downloadBytes ${bucket}/${key} failed: ${res.status} ${text}`);
-  }
-  const buf = await res.arrayBuffer();
-  return new Uint8Array(buf);
 }
 
 /**

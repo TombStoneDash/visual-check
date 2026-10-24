@@ -5,6 +5,7 @@
  * dependency. Tests stub global `fetch`.
  */
 import { BaselineLane, RunReport, TargetResult } from './types.js';
+import { fetchWithTimeout } from './http.js';
 
 export interface BaselineRow {
   id: string;
@@ -44,21 +45,35 @@ function authHeaders(extra: Record<string, string> = {}): Record<string, string>
   };
 }
 
+/**
+ * The body is read inside the request deadline, so a PostgREST that sends
+ * headers and then stalls cannot hang the caller on `.json()`. Writes with
+ * `Prefer: return=minimal` have no body; `.json()` then rejects as before.
+ */
 async function rest(
   path: string,
   init: { method: string; headers?: Record<string, string>; body?: string },
-): Promise<Response> {
+): Promise<{ json: () => Promise<unknown> }> {
   const url = `${supabaseUrl()}/rest/v1${path}`;
-  const res = await fetch(url, {
+  const requestInit: RequestInit = {
     method: init.method,
     headers: { ...authHeaders(), ...(init.headers ?? {}) },
     body: init.body,
+  };
+  const body = await fetchWithTimeout(`PostgREST ${init.method} ${path}`, url, requestInit, async (res) => {
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(`PostgREST ${init.method} ${path} failed: ${res.status} ${text}`);
+    }
+    try {
+      return { ok: true as const, value: (await res.json()) as unknown };
+    } catch (error) {
+      // Empty or non-JSON body: only callers that ask for JSON should fail.
+      if (error instanceof SyntaxError) return { ok: false as const, error };
+      throw error;
+    }
   });
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`PostgREST ${init.method} ${path} failed: ${res.status} ${text}`);
-  }
-  return res;
+  return { json: async () => (body.ok ? body.value : Promise.reject(body.error)) };
 }
 
 /**
