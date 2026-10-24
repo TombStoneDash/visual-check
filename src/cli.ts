@@ -495,7 +495,7 @@ program
         }
         current = resolved.urls[0]!;
         console.error(
-          `[visual-check] notice: --current defaults to the first config route ${current}; compare checks one page per run`,
+          `[visual-check] notice: --current defaults to the first config route ${stripUrlCredentials(current)}; compare checks one page per run`,
         );
       }
       const threshold = parseNumberOption('--threshold', opts.threshold, { min: 0, max: 100 });

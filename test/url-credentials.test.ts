@@ -45,3 +45,26 @@ describe('compare labels never carry credentials', () => {
     expect(t.label).toBe('https://staging.example.com/');
   });
 });
+
+describe('usage errors never echo credentials', () => {
+  it('--urls with a non-http scheme', async () => {
+    const { parseUrls } = await import('../src/cli-args.js');
+    expect(() => parseUrls('ftp://ci:hunter2@files.example.com')).toThrow(/ftp:\/\/files\.example\.com/);
+    try {
+      parseUrls('ftp://ci:hunter2@files.example.com');
+    } catch (e) {
+      expect(String(e)).not.toContain('hunter2');
+    }
+  });
+
+  it('--base-url that is not a usable http URL', async () => {
+    const { resolveConfigTargets } = await import('../src/project-config.js');
+    const config = { projectId: 'p', routes: [{ id: 'home', path: '/' }] };
+    expect(() => resolveConfigTargets(config, 'ftp://ci:hunter2@example.com')).toThrow(/Invalid --base-url/);
+    try {
+      resolveConfigTargets(config, 'ftp://ci:hunter2@example.com');
+    } catch (e) {
+      expect(String(e)).not.toContain('hunter2');
+    }
+  });
+});
