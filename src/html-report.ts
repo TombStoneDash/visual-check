@@ -17,10 +17,16 @@ export async function renderHtmlReport(report: RunReport, outPath: string): Prom
   await fs.writeFile(abs, html, 'utf8');
 }
 
-/** Convenience: given a JSON report path, give back the adjacent HTML path. */
+/**
+ * Convenience: given a JSON report path, give back the adjacent HTML path.
+ * A JSON path that itself ends in `.html` gets `<name>.report.html`, so the
+ * HTML report can never overwrite the JSON report it sits next to.
+ */
 export function htmlReportPathFor(jsonPath: string): string {
   const parsed = path.parse(jsonPath);
-  return path.join(parsed.dir, `${parsed.name}.html`);
+  const adjacent = path.join(parsed.dir, `${parsed.name}.html`);
+  if (path.resolve(adjacent) !== path.resolve(jsonPath)) return adjacent;
+  return path.join(parsed.dir, `${parsed.name}.report.html`);
 }
 
 async function toDataUri(filePath: string | null): Promise<string | null> {

@@ -51,6 +51,24 @@ describe('CLI usage exit codes without a browser', () => {
     expect(result.stdout).not.toContain('target(s)');
   });
 
+  it.each([
+    { args: ['--json', 'out/r.json', '--html', 'out/r.json'], message: '--json and --html both point at' },
+    { args: ['--json', 'out/r.json', '--receipt', 'out/r.json'], message: '--json and --receipt both point at' },
+    { args: ['--html', 'out/r.html', '--receipt', 'out/r.html'], message: '--html and --receipt both point at' },
+    { args: ['--json', 'out/r.json', '--receipt', 'out/r.html'], message: 'the default HTML report path and --receipt' },
+  ])('refuses report paths that would overwrite each other: $args', ({ args, message }) => {
+    for (const cmd of [
+      ['run', '--urls', 'example.com'],
+      ['compare', '--baseline', 'example.com', '--current', 'example.org'],
+      ['deploy-gate', '--urls', 'example.com', '--project', 'demo', '--deployment-url', 'https://example.com'],
+    ]) {
+      const result = run([...cmd, ...args]);
+      expect(result.status, `${cmd[0]}: ${result.stderr}`).toBe(3);
+      expect(result.stderr).toContain(message);
+      expect(result.stdout).not.toContain('target(s)');
+    }
+  });
+
   it('rejects an empty URL list', () => {
     const result = run(['run', '--urls', ',']);
     expect(result.status, result.stderr).toBe(3);
