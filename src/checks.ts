@@ -202,6 +202,27 @@ export function checkLoadTime(cap: CaptureArtifact, warnMs: number): CheckResult
       blocking: false,
     };
   }
+  // Same rule as the pixel diff threshold: a budget that is not a finite,
+  // non-negative number is a setup mistake, not a slow page. Without this,
+  // NaN or undefined reads as "load time 800ms > NaNms" on every target.
+  if (typeof warnMs !== 'number' || !Number.isFinite(warnMs) || warnMs < 0) {
+    return {
+      name: 'load_time',
+      mode,
+      status: 'error',
+      message: 'invalid load time budget',
+      blocking: true,
+    };
+  }
+  if (typeof cap.loadTimeMs !== 'number' || !Number.isFinite(cap.loadTimeMs) || cap.loadTimeMs < 0) {
+    return {
+      name: 'load_time',
+      mode,
+      status: 'skip',
+      message: 'load time was not measured',
+      blocking: false,
+    };
+  }
   const ok = cap.loadTimeMs <= warnMs;
   return {
     name: 'load_time',
