@@ -13,6 +13,7 @@ import { baselineStorageKey } from '../baseline-key.js';
 import * as storage from '../storage.js';
 import * as db from '../db.js';
 import { BaselineLane } from '../types.js';
+import { fetchWithTimeout } from '../http.js';
 
 export interface PromoteOptions {
   runId: string;
@@ -47,11 +48,12 @@ async function downloadScreenshotTo(
   // baseline bucket gets its own copy (keeps baselines immutable against
   // screenshot-bucket garbage collection).
   const signed = await storage.signedUrl('visual-check-screenshots', sourceKey, 60);
-  const res = await fetch(signed);
-  if (!res.ok) {
-    throw new Error(`download screenshot failed: ${res.status}`);
-  }
-  const buf = new Uint8Array(await res.arrayBuffer());
+  const buf = await fetchWithTimeout('download screenshot', signed, {}, async (res) => {
+    if (!res.ok) {
+      throw new Error(`download screenshot failed: ${res.status}`);
+    }
+    return new Uint8Array(await res.arrayBuffer());
+  });
   await fs.mkdir(path.dirname(targetPath), { recursive: true });
   await fs.writeFile(targetPath, buf);
 }

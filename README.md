@@ -333,6 +333,10 @@ TELEGRAM_BOT_TOKEN=<bot-token>
 TELEGRAM_CHAT_ID=<chat-id>
 ```
 
+Every Supabase, Storage and Telegram request has a 30-second deadline
+(body included), so a stalled service fails the step instead of hanging
+the job. Override with `VISUAL_CHECK_HTTP_TIMEOUT_MS=<milliseconds>`.
+
 Setup guide: see `SETUP_REQUIRED.md`.
 
 ## Threshold guidance
