@@ -27,6 +27,7 @@ import {
 import { runDeployGate } from './commands/deploy-gate.js';
 import { runPromote } from './commands/promote.js';
 import { runCompare } from './commands/compare.js';
+import { runBaseline } from './commands/baseline.js';
 import { describeExitCode, exitCodeFor, USAGE_OR_FATAL_EXIT_CODE } from './exit-codes.js';
 import { formatViewportToken, parseUrls, parseViewports, parseNumberOption, UsageError } from './cli-args.js';
 import { loadProjectConfigFile, resolveConfigTargetsForCli } from './project-config.js';
@@ -175,28 +176,16 @@ program
 
     let failures = 0;
     try {
-      for (const url of urls) {
-        const slug = urlToSlug(url);
-        for (const vp of viewports) {
-          const outPath = path.join(baselineRoot, slug, `${vp.name}.png`);
-          process.stdout.write(`  ${url} @ ${vp.name} ... `);
-          const cap = await capturer.capture(url, vp, outPath);
-          if (cap.error) {
-            console.log(`ERROR: ${cap.error}`);
-            failures++;
-          } else {
-            console.log(
-              `OK (HTTP ${cap.httpStatus ?? '—'}, ${cap.loadTimeMs}ms) → ${path.relative(root, outPath)}`,
-            );
-          }
-        }
-      }
+      const results = await runBaseline({ urls, viewports, root, capturer });
+      failures = results.filter((r) => !r.saved).length;
     } finally {
       await capturer.stop();
     }
 
     if (failures > 0) {
-      console.error(`\n[visual-check] ${failures} baseline capture(s) failed.`);
+      console.error(
+        `\n[visual-check] ${failures} baseline capture(s) failed or were unhealthy and were not saved.`,
+      );
       process.exit(1);
     }
     console.log(`\n[visual-check] Baselines saved to ${baselineRoot}`);
