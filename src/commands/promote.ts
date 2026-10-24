@@ -37,6 +37,12 @@ export interface PromoteOptions {
 export interface PromoteResult {
   promoted: Array<{ url: string; viewport: string; storageKey: string }>;
   skipped: Array<{ url: string; viewport: string; reason: string }>;
+  /**
+   * Targets the caller asked for that did not become baselines for a reason
+   * other than policy: a storage/database error while promoting, or a
+   * `--select` pair that is not in the run. Each is also listed in `skipped`.
+   */
+  failed: Array<{ url: string; viewport: string; reason: string }>;
 }
 
 async function downloadScreenshotTo(
@@ -78,6 +84,7 @@ export async function runPromote(opts: PromoteOptions): Promise<PromoteResult> {
 
   const promoted: PromoteResult['promoted'] = [];
   const skipped: PromoteResult['skipped'] = [];
+  const failed: PromoteResult['failed'] = [];
   const workDir = await fs.mkdtemp(path.join(os.tmpdir(), 'visual-check-promote-'));
 
   try {
@@ -116,11 +123,14 @@ export async function runPromote(opts: PromoteOptions): Promise<PromoteResult> {
         promoted.push({ url: r.url, viewport: r.viewport, storageKey: baselineKey });
         log(`  ✓ ${r.url} @ ${r.viewport}`);
       } catch (e) {
-        skipped.push({
+        const entry = {
           url: r.url,
           viewport: r.viewport,
           reason: e instanceof Error ? e.message : String(e),
-        });
+        };
+        skipped.push(entry);
+        failed.push(entry);
+        log(`  ✗ ${r.url} @ ${r.viewport}: ${entry.reason}`);
       }
     }
   } finally {
@@ -131,13 +141,17 @@ export async function runPromote(opts: PromoteOptions): Promise<PromoteResult> {
     for (const s of opts.selected ?? []) {
       const inRun = results.some((r) => r.url === s.url && r.viewport === s.viewport);
       if (!inRun) {
-        const reason = `not in run ${opts.runId}`;
-        skipped.push({ url: s.url, viewport: s.viewport, reason });
-        log(`  ✗ ${s.url} @ ${s.viewport}: ${reason}`);
+        const entry = { url: s.url, viewport: s.viewport, reason: `not in run ${opts.runId}` };
+        skipped.push(entry);
+        failed.push(entry);
+        log(`  ✗ ${s.url} @ ${s.viewport}: ${entry.reason}`);
       }
     }
   }
 
-  log(`[visual-check] promote: ${promoted.length} promoted, ${skipped.length} skipped`);
-  return { promoted, skipped };
+  log(
+    `[visual-check] promote: ${promoted.length} promoted, ${skipped.length} skipped` +
+      (failed.length > 0 ? ` (${failed.length} failed)` : ''),
+  );
+  return { promoted, skipped, failed };
 }

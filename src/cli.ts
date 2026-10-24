@@ -647,7 +647,7 @@ program
               })
           : undefined;
 
-      const { promoted, skipped } = await runPromote({
+      const { promoted, skipped, failed } = await runPromote({
         runId: opts.runId,
         targets: opts.targets,
         selected,
@@ -658,6 +658,15 @@ program
 
       if (promoted.length === 0) {
         console.error(`[visual-check] promote: nothing promoted (${skipped.length} skipped)`);
+        process.exit(1);
+      }
+      // A partial promote is not a success: the caller asked for targets
+      // that are still on their old baseline (or have none).
+      if (failed.length > 0) {
+        console.error(
+          `[visual-check] promote: ${failed.length} target(s) were not promoted: ` +
+            failed.map((f) => `${f.url} @ ${f.viewport} (${f.reason})`).join('; '),
+        );
         process.exit(1);
       }
       process.exit(0);
